@@ -1,0 +1,114 @@
+name: Check LLVM Release
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      llvm_tag:
+        description: "LLVM release tag to seed (e.g. llvmorg-20.1.0). Leave empty to check for latest."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      llvm_tag: ${{ steps.resolve.outputs.llvm_tag }}
+    steps:
+      - name: Resolve LLVM tag
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${{ inputs.llvm_tag }}" ]; then
+            LLVM_TAG="${{ inputs.llvm_tag }}"
+            echo "Using manually specified tag: ${LLVM_TAG}"
+          else
+            LLVM_RELEASE=$(gh api repos/llvm/llvm-project/releases/latest --jq '{tag: .tag_name, prerelease: .prerelease, draft: .draft}')
+            LLVM_TAG=$(echo "$LLVM_RELEASE" | jq -r '.tag')
+            IS_PRERELEASE=$(echo "$LLVM_RELEASE" | jq -r '.prerelease')
+            IS_DRAFT=$(echo "$LLVM_RELEASE" | jq -r '.draft')
+
+            echo "Latest LLVM release: ${LLVM_TAG} (prerelease=${IS_PRERELEASE}, draft=${IS_DRAFT})"
+
+            if [ "$IS_PRERELEASE" = "true" ] || [ "$IS_DRAFT" = "true" ]; then
+              echo "Skipping pre-release or draft"
+              echo "llvm_tag=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          if gh api "repos/${{ github.repository }}/releases/tags/${LLVM_TAG}" > /dev/null 2>&1; then
+            echo "Release ${LLVM_TAG} already exists in this repo, nothing to do"
+            echo "llvm_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "llvm_tag=${LLVM_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Will prepare release for: ${LLVM_TAG}"
+
+  prepare:
+    needs: check
+    if: needs.check.outputs.llvm_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse version
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.check.outputs.llvm_tag }}"
+          LLVM_VERSION="${TAG#llvmorg-}"
+          echo "llvm_version=${LLVM_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap version directory
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
+          VERSION_DIR="releases/${LLVM_VERSION}"
+
+          mkdir -p "${VERSION_DIR}"
+
+          if [ ! -f "${VERSION_DIR}/presubmit.yml" ]; then
+            cp .bcr/presubmit.yml "${VERSION_DIR}/presubmit.yml"
+            echo "Copied template presubmit.yml to ${VERSION_DIR}/"
+          else
+            echo "presubmit.yml already exists for ${LLVM_VERSION}"
+          fi
+
+      - name: Commit version directory
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "releases/${LLVM_VERSION}/"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Bootstrap releases/${LLVM_VERSION}"
+            git push origin HEAD
+          fi
+
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.check.outputs.llvm_tag }}"
+          echo "Dispatching release.yml for ${TAG}"
+          gh workflow run release.yml \
+            --repo "${{ github.repository }}" \
+            -f llvm_tag="${TAG}"

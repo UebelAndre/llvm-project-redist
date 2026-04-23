@@ -1,0 +1,13 @@
+{
+    "homepage": "https://llvm.org",
+    "maintainers": [
+        {
+            "github": "UebelAndre"
+        }
+    ],
+    "repository": [
+        "github:UebelAndre/llvm-project-redist"
+    ],
+    "versions": [],
+    "yanked_versions": {}
+}

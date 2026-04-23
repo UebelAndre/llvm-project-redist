@@ -1,0 +1,42 @@
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+py_library(
+    name = "transform_module_bazel",
+    srcs = ["transform_module_bazel.py"],
+)
+
+py_test(
+    name = "transform_module_bazel_test",
+    srcs = ["transform_module_bazel_test.py"],
+    deps = [":transform_module_bazel"],
+)
+
+py_library(
+    name = "transform_extensions_bzl",
+    srcs = ["transform_extensions_bzl.py"],
+)
+
+py_test(
+    name = "transform_extensions_bzl_test",
+    srcs = ["transform_extensions_bzl_test.py"],
+    deps = [":transform_extensions_bzl"],
+)
+
+py_library(
+    name = "validate_patches",
+    srcs = ["validate_patches.py"],
+)
+
+py_test(
+    name = "validate_patches_test",
+    srcs = ["validate_patches_test.py"],
+    deps = [":validate_patches"],
+)
+
+py_test(
+    name = "validate_patches_repo_test",
+    srcs = ["validate_patches_repo_test.py"],
+    data = ["//releases"],
+    deps = [":validate_patches"],
+)

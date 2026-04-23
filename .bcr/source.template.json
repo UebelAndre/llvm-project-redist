@@ -1,0 +1,5 @@
+{
+    "integrity": "",
+    "strip_prefix": "llvm-project-{VERSION}.bzl",
+    "url": "https://github.com/{OWNER}/{REPO}/releases/download/{TAG}/llvm-project-{VERSION}.bzl.tar.xz"
+}

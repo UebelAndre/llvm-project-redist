@@ -1,0 +1,479 @@
+name: Release
+
+on:
+  pull_request:
+    paths:
+      - "releases/**"
+      - "scripts/**"
+  workflow_dispatch:
+    inputs:
+      llvm_tag:
+        description: "LLVM release tag (e.g. llvmorg-22.1.4)"
+        required: true
+        type: string
+      bcr_version:
+        description: "BCR patch version (e.g. 1 for .bcr.1). Leave empty for base release."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.result }}
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate patches
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/validate_patches.py releases
+
+      - name: Build matrix
+        id: matrix
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            VERSIONS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'releases/' \
+              | grep -oP 'releases/\K[^/]+' \
+              | sort -uV)
+
+            if [ -z "$VERSIONS" ]; then
+              echo "result=[]" >> "$GITHUB_OUTPUT"
+              echo "No version directories changed"
+              exit 0
+            fi
+
+            MATRIX="["
+            FIRST=true
+            while IFS= read -r V; do
+              [ -z "$V" ] && continue
+              $FIRST || MATRIX+=","
+              FIRST=false
+              MATRIX+="{\"llvm_version\":\"${V}\",\"version\":\"${V}.bcr.preview\",\"tag\":\"\",\"bcr_version\":\"preview\"}"
+            done <<< "$VERSIONS"
+            MATRIX+="]"
+          else
+            TAG="${{ inputs.llvm_tag }}"
+            LLVM_VERSION="${TAG#llvmorg-}"
+            BCR="${{ inputs.bcr_version }}"
+
+            if [ -n "$BCR" ]; then
+              VERSION="${LLVM_VERSION}.bcr.${BCR}"
+              RELEASE_TAG="llvmorg-${VERSION}"
+            else
+              VERSION="${LLVM_VERSION}"
+              RELEASE_TAG="${TAG}"
+            fi
+
+            MATRIX="[{\"llvm_version\":\"${LLVM_VERSION}\",\"version\":\"${VERSION}\",\"tag\":\"${RELEASE_TAG}\",\"bcr_version\":\"${BCR}\"}]"
+          fi
+
+          echo "result=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "Matrix: ${MATRIX}"
+
+  build:
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: redist-repo
+
+      - name: Download LLVM source tarball
+        id: download
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          TAG="llvmorg-${LLVM_VERSION}"
+          TARBALL="llvm-project-${LLVM_VERSION}.src.tar.xz"
+          URL="https://github.com/llvm/llvm-project/releases/download/${TAG}/${TARBALL}"
+
+          echo "Downloading ${URL}..."
+          curl -fSL -o "${TARBALL}" "${URL}"
+          echo "Download complete: $(du -h "${TARBALL}" | cut -f1)"
+
+          SHA256=$(sha256sum "${TARBALL}" | cut -d' ' -f1)
+          echo "upstream_sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "Upstream SHA-256: ${SHA256}"
+
+      - name: Verify or record upstream integrity
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          ACTUAL="${{ steps.download.outputs.upstream_sha256 }}"
+          INTEGRITY_FILE="redist-repo/releases/${LLVM_VERSION}/source.sha256"
+
+          mkdir -p "$(dirname "$INTEGRITY_FILE")"
+
+          if [ -f "$INTEGRITY_FILE" ]; then
+            EXPECTED=$(cat "$INTEGRITY_FILE")
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+              echo "ERROR: upstream tarball SHA-256 mismatch"
+              echo "  expected: ${EXPECTED}"
+              echo "  actual:   ${ACTUAL}"
+              exit 1
+            fi
+            echo "Upstream integrity verified: ${ACTUAL}"
+          else
+            echo "$ACTUAL" > "$INTEGRITY_FILE"
+            echo "Recorded upstream integrity: ${ACTUAL}"
+          fi
+
+      - name: Extract tarball
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          tar xf "llvm-project-${LLVM_VERSION}.src.tar.xz"
+
+      - name: Apply Bazel overlay
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          SRC="llvm-project-${LLVM_VERSION}.src"
+
+          cp -a "${SRC}/utils/bazel/llvm-project-overlay/." "${SRC}/"
+
+          for f in vulkan_sdk.bzl BUILD.bazel .bazelrc .bazelversion; do
+            if [ -e "${SRC}/utils/bazel/${f}" ]; then
+              cp "${SRC}/utils/bazel/${f}" "${SRC}/${f}"
+            fi
+          done
+
+      - name: Apply patches
+        if: matrix.bcr_version != ''
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          SRC="llvm-project-${LLVM_VERSION}.src"
+          PATCH_DIR="redist-repo/releases/${LLVM_VERSION}/patches"
+          IS_PREVIEW="${{ github.event_name == 'pull_request' && 'true' || 'false' }}"
+
+          if [ ! -d "$PATCH_DIR" ]; then
+            if [ "$IS_PREVIEW" = "true" ]; then
+              echo "No patches directory, skipping"
+              exit 0
+            fi
+            echo "ERROR: No patches directory found at ${PATCH_DIR}"
+            exit 1
+          fi
+
+          python3 redist-repo/scripts/validate_patches.py "redist-repo/releases"
+
+          PATCHES=$(find "$PATCH_DIR" -name '*.patch' | sort)
+          if [ -z "$PATCHES" ]; then
+            if [ "$IS_PREVIEW" = "true" ]; then
+              echo "No patches found, skipping"
+              exit 0
+            fi
+            echo "ERROR: bcr_version set but no patches found in ${PATCH_DIR}"
+            exit 1
+          fi
+
+          for p in $PATCHES; do
+            echo "Applying $(basename "$p")..."
+            patch -d "$SRC" -p1 < "$p"
+          done
+
+      - name: Transform MODULE.bazel
+        run: |
+          set -euo pipefail
+          VERSION="${{ matrix.version }}"
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          SRC="llvm-project-${LLVM_VERSION}.src"
+          python3 redist-repo/scripts/transform_module_bazel.py \
+            "${SRC}/utils/bazel/MODULE.bazel" \
+            "${SRC}/MODULE.bazel" \
+            "${VERSION}"
+
+      - name: Transform extensions.bzl
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          SRC="llvm-project-${LLVM_VERSION}.src"
+          python3 redist-repo/scripts/transform_extensions_bzl.py \
+            "${SRC}/utils/bazel/extensions.bzl" \
+            "${SRC}/extensions.bzl"
+
+      - name: Generate vars.bzl
+        shell: python3 {0}
+        env:
+          LLVM_VERSION: ${{ matrix.llvm_version }}
+        run: |
+          import os, re, textwrap
+
+          llvm_version = os.environ["LLVM_VERSION"]
+          src = f"llvm-project-{llvm_version}.src"
+
+          def extract_cmake_var(filepath, varname):
+              with open(filepath) as f:
+                  for line in f:
+                      m = re.match(
+                          rf'\s*set\s*\(\s*{re.escape(varname)}\s+(\S+)',
+                          line,
+                      )
+                      if m:
+                          return m.group(1).rstrip(")")
+              return None
+
+          version_file = f"{src}/cmake/Modules/LLVMVersion.cmake"
+          if not os.path.exists(version_file):
+              version_file = f"{src}/llvm/CMakeLists.txt"
+
+          cmake_file = f"{src}/llvm/CMakeLists.txt"
+
+          major = extract_cmake_var(version_file, "LLVM_VERSION_MAJOR") or "0"
+          minor = extract_cmake_var(version_file, "LLVM_VERSION_MINOR") or "0"
+          patch = extract_cmake_var(version_file, "LLVM_VERSION_PATCH") or "0"
+          suffix = extract_cmake_var(version_file, "LLVM_VERSION_SUFFIX") or ""
+
+          cxx_std = (
+              extract_cmake_var(cmake_file, "LLVM_REQUIRED_CXX_STANDARD")
+              or extract_cmake_var(cmake_file, "CMAKE_CXX_STANDARD")
+              or "17"
+          )
+
+          llvm_ver = f"{major}.{minor}.{patch}"
+          package_version = f"{llvm_ver}{suffix}"
+
+          variables = {
+              "CMAKE_CXX_STANDARD": cxx_std,
+              "LLVM_VERSION_MAJOR": major,
+              "LLVM_VERSION_MINOR": minor,
+              "LLVM_VERSION_PATCH": patch,
+              "LLVM_VERSION_SUFFIX": suffix,
+              "LLVM_VERSION": llvm_ver,
+              "PACKAGE_VERSION": package_version,
+          }
+
+          lines = [f"# Generated from {cmake_file}\n"]
+          for k, v in variables.items():
+              lines.append(f'{k} = "{v}"')
+          lines.append("")
+          lines.append("llvm_vars = {")
+          for k, v in variables.items():
+              lines.append(f'    "{k}": "{v}",')
+          lines.append("}")
+          lines.append("")
+
+          content = "\n".join(lines)
+          with open(f"{src}/vars.bzl", "w") as f:
+              f.write(content)
+
+          print("Generated vars.bzl:")
+          print(content)
+
+      - name: Generate targets.bzl files
+        shell: python3 {0}
+        env:
+          LLVM_VERSION: ${{ matrix.llvm_version }}
+        run: |
+          import os
+
+          llvm_version = os.environ["LLVM_VERSION"]
+          src = f"llvm-project-{llvm_version}.src"
+
+          default_targets = [
+              "AArch64", "AMDGPU", "ARM", "AVR", "BPF", "Hexagon",
+              "Lanai", "LoongArch", "Mips", "MSP430", "NVPTX", "PowerPC",
+              "RISCV", "Sparc", "SPIRV", "SystemZ", "VE", "WebAssembly",
+              "X86", "XCore",
+          ]
+
+          bolt_supported = {"AArch64", "X86", "RISCV"}
+          bolt_targets = [t for t in default_targets if t in bolt_supported]
+
+          with open(f"{src}/llvm/targets.bzl", "w") as f:
+              f.write(f"llvm_targets = {default_targets!r}\n")
+
+          with open(f"{src}/bolt/targets.bzl", "w") as f:
+              f.write(f"bolt_targets = {bolt_targets!r}\n")
+
+          print(f"llvm/targets.bzl: {default_targets}")
+          print(f"bolt/targets.bzl: {bolt_targets}")
+
+      - name: Copy per-version presubmit.yml
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          PRESUBMIT="redist-repo/releases/${LLVM_VERSION}/presubmit.yml"
+          if [ ! -f "$PRESUBMIT" ]; then
+            echo "ERROR: releases/${LLVM_VERSION}/presubmit.yml is required"
+            exit 1
+          fi
+          cp "$PRESUBMIT" redist-repo/.bcr/presubmit.yml
+
+      - name: Rename source directory
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          VERSION="${{ matrix.version }}"
+          mv "llvm-project-${LLVM_VERSION}.src" "llvm-project-${VERSION}.bzl"
+
+      - name: Repackage tarball
+        id: repackage
+        run: |
+          set -euo pipefail
+          VERSION="${{ matrix.version }}"
+          SRC="llvm-project-${VERSION}.bzl"
+          OUTPUT="llvm-project-${VERSION}.bzl.tar.xz"
+
+          rm -f "${OUTPUT}"
+
+          echo "Repackaging ${SRC} as ${OUTPUT} (deterministic)..."
+          tar \
+            --sort=name \
+            --mtime='@0' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -cf - "${SRC}" \
+            | xz -T1 > "${OUTPUT}"
+          echo "Repackage complete: $(du -h "${OUTPUT}" | cut -f1)"
+
+          SHA256=$(sha256sum "${OUTPUT}" | cut -d' ' -f1)
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "SHA-256: ${SHA256}"
+
+      - name: Prepare publish metadata
+        run: |
+          set -euo pipefail
+          VERSION="${{ matrix.version }}"
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          mkdir -p metadata
+          cp "llvm-project-${VERSION}.bzl/MODULE.bazel" metadata/MODULE.bazel
+          cp "redist-repo/releases/${LLVM_VERSION}/source.sha256" metadata/source.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.llvm_version }}
+          path: |
+            llvm-project-${{ matrix.version }}.bzl.tar.xz
+            metadata/
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse version
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.llvm_tag }}"
+          LLVM_VERSION="${TAG#llvmorg-}"
+          BCR="${{ inputs.bcr_version }}"
+
+          if [ -n "$BCR" ]; then
+            VERSION="${LLVM_VERSION}.bcr.${BCR}"
+            RELEASE_TAG="llvmorg-${VERSION}"
+          else
+            VERSION="${LLVM_VERSION}"
+            RELEASE_TAG="${TAG}"
+          fi
+
+          echo "llvm_version=$LLVM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ steps.version.outputs.llvm_version }}
+
+      - name: Copy per-version presubmit.yml
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
+          PRESUBMIT="releases/${LLVM_VERSION}/presubmit.yml"
+          if [ ! -f "$PRESUBMIT" ]; then
+            echo "ERROR: releases/${LLVM_VERSION}/presubmit.yml is required"
+            exit 1
+          fi
+          cp "$PRESUBMIT" .bcr/presubmit.yml
+
+      - name: Commit and tag
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+
+          cp metadata/MODULE.bazel MODULE.bazel
+          mkdir -p "releases/${LLVM_VERSION}"
+          cp metadata/source.sha256 "releases/${LLVM_VERSION}/source.sha256"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add MODULE.bazel .bcr/presubmit.yml "releases/${LLVM_VERSION}/source.sha256"
+          if git diff --cached --quiet; then
+            echo "No changes, skipping commit"
+          else
+            git commit -m "Update MODULE.bazel for ${TAG}"
+            git push origin HEAD
+          fi
+
+          git tag -a "${TAG}" -m "LLVM ${VERSION}"
+          git push origin "${TAG}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          TARBALL="llvm-project-${VERSION}.bzl.tar.xz"
+          LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
+
+          if [ "$VERSION" != "$LLVM_VERSION" ]; then
+            NOTES="Patched LLVM ${LLVM_VERSION} source with Bazel overlay (version ${VERSION}).
+
+          Upstream release: https://github.com/llvm/llvm-project/releases/tag/${{ inputs.llvm_tag }}"
+          else
+            NOTES="Repackaged LLVM ${VERSION} source with Bazel overlay pre-applied.
+
+          Upstream release: https://github.com/llvm/llvm-project/releases/tag/${TAG}"
+          fi
+
+          gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --title "LLVM ${VERSION}" \
+            --notes "${NOTES}" \
+            --draft \
+            "${TARBALL}"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "llvm-project-${{ steps.version.outputs.version }}.bzl.tar.xz"
+
+      - name: Finalize release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          gh release edit "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --draft=false

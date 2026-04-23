@@ -1,0 +1,61 @@
+# AUTO-MANAGED: Overwritten by the release workflow from releases/{version}/presubmit.yml.
+# This file serves as a reference template. To add a new LLVM version, copy
+# this into releases/{version}/presubmit.yml and customize for that release.
+bcr_test_module:
+  module_path: ""
+  matrix:
+    platform:
+      - ubuntu2204
+    bazel:
+      - "9.x"
+      - "8.x"
+  tasks:
+    run_tests:
+      name: "Run LLVM unit tests"
+      platform: ${{ platform }}
+      bazel: ${{ bazel }}
+      test_flags:
+        - "--cxxopt=-std=c++17"
+        - "--host_cxxopt=-std=c++17"
+        - "--incompatible_disallow_empty_glob=true"
+        - "--incompatible_autoload_externally="
+      test_targets:
+        - "@llvm-project//llvm/unittests:all"
+        - "@llvm-project//clang/unittests:all"
+    run_tests_macos:
+      name: "Run LLVM unit tests (macOS)"
+      platform: macos
+      bazel: ${{ bazel }}
+      test_flags:
+        - "--cxxopt=-std=c++17"
+        - "--host_cxxopt=-std=c++17"
+        - "--test_tmpdir=ci"
+        - "--incompatible_disallow_empty_glob=true"
+        - "--incompatible_autoload_externally="
+      test_targets:
+        - "@llvm-project//llvm/unittests:all"
+        - "@llvm-project//clang/unittests:all"
+    run_tests_macos_arm64:
+      name: "Run LLVM unit tests (macOS arm64)"
+      platform: macos_arm64
+      bazel: ${{ bazel }}
+      test_flags:
+        - "--cxxopt=-std=c++17"
+        - "--host_cxxopt=-std=c++17"
+        - "--test_tmpdir=ci"
+        - "--incompatible_disallow_empty_glob=true"
+        - "--incompatible_autoload_externally="
+      test_targets:
+        - "@llvm-project//llvm/unittests:all"
+        - "@llvm-project//clang/unittests:all"
+    run_tests_windows:
+      name: "Run LLVM unit tests (Windows)"
+      platform: windows
+      bazel: ${{ bazel }}
+      test_flags:
+        - "--cxxopt=/std:c++17"
+        - "--host_cxxopt=/std:c++17"
+        - "--incompatible_disallow_empty_glob=true"
+        - "--incompatible_autoload_externally="
+      test_targets:
+        - "@llvm-project//llvm/unittests:ir_tests"
