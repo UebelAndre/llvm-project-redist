@@ -1,0 +1,9 @@
+## LLVM ${VERSION}
+
+${DESCRIPTION}
+
+Upstream release: https://github.com/llvm/llvm-project/releases/tag/llvmorg-${LLVM_VERSION}
+
+### Changes
+
+${CHANGELOG}

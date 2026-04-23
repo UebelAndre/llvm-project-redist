@@ -1,0 +1,12 @@
+# Git ignore patterns
+bazel-*
+build/
+user.bazelrc
+MODULE.bazel.lock
+__pycache__/
+/*venv*
+
+# Source preparation and local presubmit testing
+llvm-project-*.bzl/
+temp_test_repos/
+*.task_config.json

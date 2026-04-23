@@ -1,0 +1,9 @@
+# Python requirements
+
+mypy
+pyyaml>=6.0.1
+requests
+ruff
+types-PyYAML
+types-requests
+zstandard

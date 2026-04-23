@@ -1,0 +1,10 @@
+---
+# Bootstrap for BuildKite: generates dynamic per-version / per-matrix steps (like BCR).
+# PyYAML is provided via @pip_deps when using `bazel run //tools:run_presubmit`.
+tasks:
+  generate_pipeline:
+    name: "Generate presubmit jobs"
+    platform: ubuntu2204
+    bazel: 8.x
+    shell_commands:
+      - "bazel run //tools:run_presubmit -- --pipeline"

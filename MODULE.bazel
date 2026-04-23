@@ -1,0 +1,15 @@
+"""llvm-project-redist"""
+
+module(
+    name = "llvm-project-redist",
+)
+
+bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip", dev_dependency = True)
+pip.parse(
+    hub_name = "llvm_project_redist_pip",
+    python_version = "3.11",
+    requirements_lock = "//tools:requirements.txt",
+)
+use_repo(pip, "llvm_project_redist_pip")

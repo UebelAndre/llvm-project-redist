@@ -1,0 +1,25 @@
+default_stages: [pre-commit]
+repos:
+  - repo: meta
+    hooks:
+      - id: check-hooks-apply
+      - id: check-useless-excludes
+  - repo: https://github.com/Warchant/pre-commit-buildifier
+    rev: 0.1.5
+    hooks:
+      - id: buildifier
+        args: [--version, "v8.5.1"]
+      - id: buildifier-lint
+        args: [--version, "v8.5.1", --warnings=all]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.13
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: [--fix]
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.16.0
+    hooks:
+      - id: mypy
+        args: [--strict]
+        additional_dependencies: [pyyaml, zstandard, types-PyYAML, types-requests]

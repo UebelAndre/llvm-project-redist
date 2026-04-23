@@ -1,0 +1,187 @@
+# Scans upstream llvm-project releases twice daily and opens a PR for any
+# new version not yet tracked in versions/. Can also be triggered manually
+# to seed a specific version.
+name: Check LLVM Release
+
+on:
+  # schedule:
+  #   - cron: "23 8,20 * * *"
+  workflow_dispatch:
+    inputs:
+      llvm_version:
+        description: "LLVM version to seed (e.g. 20.1.0). Leave empty to scan all releases."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MIN_LLVM_VERSION: "17.0.3"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.resolve.outputs.versions }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve LLVM versions
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${{ inputs.llvm_version }}" ]; then
+            echo "versions=[\"${{ inputs.llvm_version }}\"]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Fetch all stable LLVM releases (semver only, no RCs or init tags)
+          RELEASES=$(gh api repos/llvm/llvm-project/releases --paginate \
+            --jq '[.[] | select(.draft == false and .prerelease == false) | .tag_name | ltrimstr("llvmorg-") | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))]')
+
+          # Filter to versions >= MIN_LLVM_VERSION and not already tracked
+          MISSING="[]"
+          for VERSION in $(echo "$RELEASES" | jq -r '.[]'); do
+            SMALLEST=$(printf '%s\n%s' "$MIN_LLVM_VERSION" "$VERSION" | sort -V | head -1)
+            if [ "$SMALLEST" = "$MIN_LLVM_VERSION" ] && [ ! -d "versions/${VERSION}" ]; then
+              MISSING=$(echo "$MISSING" | jq --arg v "$VERSION" '. + [$v]')
+            fi
+          done
+
+          echo "Found $(echo "$MISSING" | jq length) new version(s)"
+          echo "versions=$(echo "$MISSING" | jq -c '.')" >> "$GITHUB_OUTPUT"
+
+  prepare:
+    needs: discover
+    if: needs.discover.outputs.versions != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        llvm_version: ${{ fromJson(needs.discover.outputs.versions) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for existing PR
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BRANCH="auto-release/${{ matrix.llvm_version }}"
+
+          EXISTING=$(gh pr list --repo "${{ github.repository }}" \
+            --head "$BRANCH" --state open --json number --jq 'length')
+
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "PR already exists for ${BRANCH}, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bootstrap version directory
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          VERSION_DIR="versions/${LLVM_VERSION}"
+
+          mkdir -p "${VERSION_DIR}"
+
+          if [ ! -f "${VERSION_DIR}/version.txt" ]; then
+            echo "${LLVM_VERSION}" > "${VERSION_DIR}/version.txt"
+            echo "Created version.txt with ${LLVM_VERSION}"
+          fi
+
+          if [ ! -f "${VERSION_DIR}/presubmit.yml" ]; then
+            # Find the closest existing version's presubmit.yml
+            CLOSEST=$(ls -d versions/*/presubmit.yml 2>/dev/null \
+              | sed 's|versions/||;s|/presubmit.yml||' \
+              | sort -V \
+              | awk -v target="$LLVM_VERSION" '{
+                  if ($0 <= target) below=$0
+                  else if (!above) above=$0
+                }
+                END {
+                  if (below) print below; else if (above) print above
+                }')
+
+            if [ -z "$CLOSEST" ]; then
+              echo "ERROR: no existing version with presubmit.yml found, cannot create PR"
+              exit 1
+            fi
+            cp "versions/${CLOSEST}/presubmit.yml" "${VERSION_DIR}/presubmit.yml"
+            echo "Copied presubmit.yml from ${CLOSEST}"
+          fi
+
+      - name: Download upstream signature and signing key
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          VERSION_DIR="versions/${LLVM_VERSION}"
+          TAG="llvmorg-${LLVM_VERSION}"
+          TARBALL="llvm-project-${LLVM_VERSION}.src.tar.xz"
+          SIG_FILE="${VERSION_DIR}/${TARBALL}.sig"
+          KEY_FILE="${VERSION_DIR}/signing-key.asc"
+
+          if [ -f "$SIG_FILE" ] && [ -f "$KEY_FILE" ]; then
+            echo "Signature and key already exist for ${LLVM_VERSION}"
+            exit 0
+          fi
+
+          SIG_URL="https://github.com/llvm/llvm-project/releases/download/${TAG}/${TARBALL}.sig"
+          echo "Downloading signature from ${SIG_URL}..."
+          curl -fSL -o "${SIG_FILE}" "${SIG_URL}"
+
+          KEY_ID=$(gpg --list-packets "${SIG_FILE}" 2>/dev/null | grep -oP 'keyid \K[A-F0-9]+' | head -1)
+          if [ -z "$KEY_ID" ]; then
+            echo "ERROR: could not extract key ID from signature"
+            exit 1
+          fi
+
+          echo "Fetching signing key ${KEY_ID} from keyserver..."
+          gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys "${KEY_ID}"
+          gpg --armor --export "${KEY_ID}" > "${KEY_FILE}"
+
+          echo "Saved signature and signing key for ${LLVM_VERSION}"
+
+      - name: Create PR
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ matrix.llvm_version }}"
+          BRANCH="auto-release/${LLVM_VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git push origin --delete "$BRANCH" 2>/dev/null || true
+          git checkout -b "$BRANCH"
+          git add "versions/${LLVM_VERSION}/"
+
+          if git diff --cached --quiet; then
+            echo "No changes, skipping"
+            exit 0
+          fi
+
+          git commit -m "Add LLVM ${LLVM_VERSION}"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --head "$BRANCH" \
+            --title "Add LLVM ${LLVM_VERSION}" \
+            --body "https://github.com/llvm/llvm-project/releases/tag/llvmorg-${LLVM_VERSION}"

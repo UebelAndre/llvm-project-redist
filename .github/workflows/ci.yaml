@@ -1,0 +1,238 @@
+# Runs pre-commit checks, patch validation, and builds release archives for
+# any version directories changed in the PR or push. On pushes to main,
+# dispatches the release workflow for affected versions.
+name: CI
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+    paths:
+      - "versions/**"
+  workflow_dispatch:
+    inputs:
+      llvm_version:
+        description: "LLVM version to release patches for (e.g. 20.1.0)"
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+  attestations: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  precommit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Pre-commit
+        uses: pre-commit/action@v3.0.1
+
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.result }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Validate patches
+        run: |
+          BASE_REF="origin/main"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BASE_REF="HEAD~1"
+          fi
+          bazel run //tools:validate_patches -- versions --verify-upstream --base-ref "${BASE_REF}"
+
+      - name: Bazel tests
+        run: bazel test //tools/...
+
+      - name: Build matrix
+        id: matrix
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            VERSIONS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'versions/' \
+              | { grep -oP 'versions/\K[^/]+(?=/)' || true; } \
+              | sort -uV)
+          elif [ -n "${{ inputs.llvm_version }}" ]; then
+            VERSIONS="${{ inputs.llvm_version }}"
+          else
+            VERSIONS=$(git diff --name-only HEAD~1 -- 'versions/' \
+              | { grep -oP 'versions/\K[^/]+(?=/)' || true; } \
+              | sort -uV \
+              | tail -1)
+          fi
+
+          if [ -z "$VERSIONS" ]; then
+            echo "result=[]" >> "$GITHUB_OUTPUT"
+            echo "No version directories changed"
+            exit 0
+          fi
+
+          MATRIX="["
+          FIRST=true
+          while IFS= read -r V; do
+            [ -z "$V" ] && continue
+            $FIRST || MATRIX+=","
+            FIRST=false
+
+            VERSION_FILE="versions/${V}/version.txt"
+            if [ -f "$VERSION_FILE" ]; then
+              VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+            else
+              VERSION="${V}"
+            fi
+
+            MATRIX+="{\"llvm_version\":\"${V}\",\"version\":\"${VERSION}\"}"
+          done <<< "$VERSIONS"
+          MATRIX+="]"
+
+          echo "result=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "Matrix: ${MATRIX}"
+
+  build:
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: redist-repo
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Build redistribution artifact
+        id: build
+        working-directory: redist-repo
+        run: |
+          bazel run //tools:build -- \
+            --llvm-version "${{ matrix.llvm_version }}" \
+            --version "${{ matrix.version }}" \
+            --versions-dir=versions \
+            --output-dir=.
+
+      - name: Generate checksums and integrity
+        working-directory: redist-repo
+        run: |
+          set -euo pipefail
+          VERSION="${{ matrix.version }}"
+          for archive in \
+            "llvm-project-${VERSION}.bzl.tar.xz" \
+            "llvm-project-${VERSION}.bzl.tar.zst"; do
+            sha256sum "${archive}" > "${archive}.sha256"
+            echo -n "sha256-$(sha256sum "${archive}" | cut -d' ' -f1 | xxd -r -p | base64 -w0)" > "${archive}.integrity"
+          done
+
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            redist-repo/llvm-project-${{ matrix.version }}.bzl.tar.xz
+            redist-repo/llvm-project-${{ matrix.version }}.bzl.tar.zst
+
+      - name: Create attestation files
+        working-directory: redist-repo
+        run: |
+          set -euo pipefail
+          VERSION="${{ matrix.version }}"
+          for f in \
+            "llvm-project-${VERSION}.bzl.tar.xz" \
+            "llvm-project-${VERSION}.bzl.tar.zst"; do
+            cp "${{ steps.attest.outputs.bundle-path }}" "${f}.intoto.jsonl"
+          done
+
+      - name: Stage release artifacts
+        run: |
+          set -euo pipefail
+          VERSION="${{ matrix.version }}"
+          mkdir -p release-artifacts
+          cp redist-repo/llvm-project-${VERSION}.bzl.tar.* release-artifacts/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.llvm_version }}
+          path: release-artifacts/
+          retention-days: 7
+
+  dispatch:
+    needs: [build]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect affected versions
+        id: detect
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.llvm_version }}" ]; then
+            VERSIONS="${{ inputs.llvm_version }}"
+          else
+            VERSIONS=$(git diff --name-only HEAD~1 -- 'versions/' \
+              | { grep -oP 'versions/\K[^/]+(?=/)' || true; } \
+              | sort -uV \
+              | tail -1)
+          fi
+
+          if [ -z "$VERSIONS" ]; then
+            echo "No version directories changed"
+            echo "versions=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "versions<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$VERSIONS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "Affected versions: $VERSIONS"
+
+      - name: Dispatch release
+        if: steps.detect.outputs.versions != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r LLVM_VERSION; do
+            [ -z "$LLVM_VERSION" ] && continue
+
+            VERSION_FILE="versions/${LLVM_VERSION}/version.txt"
+            if [ ! -f "$VERSION_FILE" ]; then
+              echo "No version.txt for ${LLVM_VERSION}, skipping"
+              continue
+            fi
+
+            echo "Dispatching release for ${LLVM_VERSION}"
+            gh workflow run release.yaml \
+              --repo "${{ github.repository }}" \
+              -f llvm_version="${LLVM_VERSION}"
+          done <<< "${{ steps.detect.outputs.versions }}"
