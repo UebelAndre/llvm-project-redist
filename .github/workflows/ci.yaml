@@ -379,7 +379,7 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
           echo "Affected versions: $VERSIONS"
 
-      - name: Compute next BCR version and dispatch release
+      - name: Dispatch release
         if: steps.detect.outputs.versions != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -388,21 +388,30 @@ jobs:
           while IFS= read -r LLVM_VERSION; do
             [ -z "$LLVM_VERSION" ] && continue
 
+            BASE_TAG="llvmorg-${LLVM_VERSION}"
+            HAS_BASE=$(gh api "repos/${{ github.repository }}/releases/tags/${BASE_TAG}" \
+              > /dev/null 2>&1 && echo "true" || echo "false")
+
             PATCH_DIR="versions/${LLVM_VERSION}/patches"
             PATCH_COUNT=$(find "$PATCH_DIR" -name '*.patch' 2>/dev/null | wc -l)
-            if [ "$PATCH_COUNT" -eq 0 ]; then
-              echo "No patches for ${LLVM_VERSION}, skipping"
-              continue
+
+            if [ "$HAS_BASE" = "false" ]; then
+              echo "Dispatching base release for ${LLVM_VERSION}"
+              gh workflow run release.yaml \
+                --repo "${{ github.repository }}" \
+                -f llvm_version="${LLVM_VERSION}"
+            elif [ "$PATCH_COUNT" -gt 0 ]; then
+              EXISTING=$(gh api "repos/${{ github.repository }}/releases" \
+                --paginate --jq '.[].tag_name' \
+                | grep -cP "^llvmorg-${LLVM_VERSION}\\.bcr\\." || true)
+              NEXT_BCR=$((EXISTING + 1))
+
+              echo "Dispatching patched release for ${LLVM_VERSION}.bcr.${NEXT_BCR}"
+              gh workflow run release.yaml \
+                --repo "${{ github.repository }}" \
+                -f llvm_version="${LLVM_VERSION}" \
+                -f bcr_version="${NEXT_BCR}"
+            else
+              echo "Base release exists and no patches for ${LLVM_VERSION}, skipping"
             fi
-
-            EXISTING=$(gh api "repos/${{ github.repository }}/releases" \
-              --paginate --jq '.[].tag_name' \
-              | grep -cP "^llvmorg-${LLVM_VERSION}\\.bcr\\." || true)
-            NEXT_BCR=$((EXISTING + 1))
-
-            echo "Dispatching release for ${LLVM_VERSION}.bcr.${NEXT_BCR}"
-            gh workflow run release.yaml \
-              --repo "${{ github.repository }}" \
-              -f llvm_version="${LLVM_VERSION}" \
-              -f bcr_version="${NEXT_BCR}"
           done <<< "${{ steps.detect.outputs.versions }}"

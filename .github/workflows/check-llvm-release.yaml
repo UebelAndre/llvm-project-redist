@@ -12,8 +12,8 @@ on:
         default: ""
 
 permissions:
-  actions: write
   contents: write
+  pull-requests: write
 
 jobs:
   check:
@@ -66,7 +66,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check for existing PR
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
+          BRANCH="prepare/${LLVM_VERSION}"
+
+          EXISTING=$(gh pr list --repo "${{ github.repository }}" \
+            --head "$BRANCH" --state open --json number --jq 'length')
+
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "PR already exists for ${BRANCH}, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bootstrap version directory
+        if: steps.existing.outputs.skip != 'true'
         run: |
           set -euo pipefail
           LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
@@ -81,29 +101,62 @@ jobs:
             echo "presubmit.yml already exists for ${LLVM_VERSION}"
           fi
 
-      - name: Commit version directory
+      - name: Record upstream integrity
+        if: steps.existing.outputs.skip != 'true'
         run: |
           set -euo pipefail
           LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
+          VERSION_DIR="versions/${LLVM_VERSION}"
+          INTEGRITY_FILE="${VERSION_DIR}/source.sha256"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add "versions/${LLVM_VERSION}/"
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Bootstrap versions/${LLVM_VERSION}"
-            git push origin HEAD
+          if [ -f "$INTEGRITY_FILE" ]; then
+            echo "source.sha256 already exists for ${LLVM_VERSION}"
+            exit 0
           fi
 
-      - name: Dispatch release workflow
+          TAG="llvmorg-${LLVM_VERSION}"
+          TARBALL="llvm-project-${LLVM_VERSION}.src.tar.xz"
+          URL="https://github.com/llvm/llvm-project/releases/download/${TAG}/${TARBALL}"
+
+          echo "Downloading ${URL} to compute SHA-256..."
+          curl -fSL -o "${TARBALL}" "${URL}"
+
+          SHA256=$(sha256sum "${TARBALL}" | cut -d' ' -f1)
+          echo "$SHA256" > "$INTEGRITY_FILE"
+          rm -f "${TARBALL}"
+
+          echo "Recorded upstream integrity: ${SHA256}"
+
+      - name: Create PR
+        if: steps.existing.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
-          echo "Dispatching release.yaml for ${LLVM_VERSION}"
-          gh workflow run release.yaml \
+          BRANCH="prepare/${LLVM_VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH"
+          git add "versions/${LLVM_VERSION}/"
+
+          if git diff --cached --quiet; then
+            echo "No changes, skipping"
+            exit 0
+          fi
+
+          git commit -m "Prepare LLVM ${LLVM_VERSION}"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
             --repo "${{ github.repository }}" \
-            -f llvm_version="${LLVM_VERSION}"
+            --head "$BRANCH" \
+            --title "Prepare LLVM ${LLVM_VERSION}" \
+            --body "$(cat <<'EOF'
+          Bootstraps `versions/${LLVM_VERSION}/` with a template `presubmit.yml`.
+
+          Review and customize the presubmit configuration, then merge to trigger the release.
+          EOF
+          )"
