@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "releases/**"
+      - "versions/**"
   workflow_dispatch:
     inputs:
       llvm_version:
@@ -35,8 +35,8 @@ jobs:
           if [ -n "${{ inputs.llvm_version }}" ]; then
             VERSIONS="${{ inputs.llvm_version }}"
           else
-            VERSIONS=$(git diff --name-only HEAD~1 -- 'releases/' \
-              | grep -oP 'releases/\K[^/]+' \
+            VERSIONS=$(git diff --name-only HEAD~1 -- 'versions/' \
+              | grep -oP 'versions/\K[^/]+(?=/)' \
               | sort -uV)
           fi
 
@@ -53,7 +53,7 @@ jobs:
 
       - name: Validate patches
         if: steps.detect.outputs.versions != ''
-        run: python3 scripts/validate_patches.py releases
+        run: python3 scripts/validate_patches.py versions
 
       - name: Compute next BCR version and dispatch
         if: steps.detect.outputs.versions != ''
@@ -64,7 +64,7 @@ jobs:
           while IFS= read -r LLVM_VERSION; do
             [ -z "$LLVM_VERSION" ] && continue
 
-            PATCH_DIR="releases/${LLVM_VERSION}/patches"
+            PATCH_DIR="versions/${LLVM_VERSION}/patches"
             PATCH_COUNT=$(find "$PATCH_DIR" -name '*.patch' 2>/dev/null | wc -l)
             if [ "$PATCH_COUNT" -eq 0 ]; then
               echo "No patches for ${LLVM_VERSION}, skipping"

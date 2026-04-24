@@ -3,7 +3,7 @@ name: Release
 on:
   pull_request:
     paths:
-      - "releases/**"
+      - "versions/**"
       - "scripts/**"
   workflow_dispatch:
     inputs:
@@ -36,15 +36,15 @@ jobs:
 
       - name: Validate patches
         if: github.event_name == 'pull_request'
-        run: python3 scripts/validate_patches.py releases
+        run: python3 scripts/validate_patches.py versions
 
       - name: Build matrix
         id: matrix
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            VERSIONS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'releases/' \
-              | grep -oP 'releases/\K[^/]+' \
+            VERSIONS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'versions/' \
+              | grep -oP 'versions/\K[^/]+(?=/)' \
               | sort -uV)
 
             if [ -z "$VERSIONS" ]; then
@@ -117,7 +117,7 @@ jobs:
           set -euo pipefail
           LLVM_VERSION="${{ matrix.llvm_version }}"
           ACTUAL="${{ steps.download.outputs.upstream_sha256 }}"
-          INTEGRITY_FILE="redist-repo/releases/${LLVM_VERSION}/source.sha256"
+          INTEGRITY_FILE="redist-repo/versions/${LLVM_VERSION}/source.sha256"
 
           mkdir -p "$(dirname "$INTEGRITY_FILE")"
 
@@ -161,7 +161,7 @@ jobs:
           set -euo pipefail
           LLVM_VERSION="${{ matrix.llvm_version }}"
           SRC="llvm-project-${LLVM_VERSION}.src"
-          PATCH_DIR="redist-repo/releases/${LLVM_VERSION}/patches"
+          PATCH_DIR="redist-repo/versions/${LLVM_VERSION}/patches"
           IS_PREVIEW="${{ github.event_name == 'pull_request' && 'true' || 'false' }}"
 
           if [ ! -d "$PATCH_DIR" ]; then
@@ -173,7 +173,7 @@ jobs:
             exit 1
           fi
 
-          python3 redist-repo/scripts/validate_patches.py "redist-repo/releases"
+          python3 redist-repo/scripts/validate_patches.py "redist-repo/versions"
 
           PATCHES=$(find "$PATCH_DIR" -name '*.patch' | sort)
           if [ -z "$PATCHES" ]; then
@@ -311,9 +311,9 @@ jobs:
         run: |
           set -euo pipefail
           LLVM_VERSION="${{ matrix.llvm_version }}"
-          PRESUBMIT="redist-repo/releases/${LLVM_VERSION}/presubmit.yml"
+          PRESUBMIT="redist-repo/versions/${LLVM_VERSION}/presubmit.yml"
           if [ ! -f "$PRESUBMIT" ]; then
-            echo "ERROR: releases/${LLVM_VERSION}/presubmit.yml is required"
+            echo "ERROR: versions/${LLVM_VERSION}/presubmit.yml is required"
             exit 1
           fi
           cp "$PRESUBMIT" redist-repo/.bcr/presubmit.yml
@@ -357,7 +357,7 @@ jobs:
           LLVM_VERSION="${{ matrix.llvm_version }}"
           mkdir -p metadata
           cp "llvm-project-${VERSION}.bzl/MODULE.bazel" metadata/MODULE.bazel
-          cp "redist-repo/releases/${LLVM_VERSION}/source.sha256" metadata/source.sha256
+          cp "redist-repo/versions/${LLVM_VERSION}/source.sha256" metadata/source.sha256
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -405,9 +405,9 @@ jobs:
         run: |
           set -euo pipefail
           LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
-          PRESUBMIT="releases/${LLVM_VERSION}/presubmit.yml"
+          PRESUBMIT="versions/${LLVM_VERSION}/presubmit.yml"
           if [ ! -f "$PRESUBMIT" ]; then
-            echo "ERROR: releases/${LLVM_VERSION}/presubmit.yml is required"
+            echo "ERROR: versions/${LLVM_VERSION}/presubmit.yml is required"
             exit 1
           fi
           cp "$PRESUBMIT" .bcr/presubmit.yml
@@ -420,13 +420,13 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
 
           cp metadata/MODULE.bazel MODULE.bazel
-          mkdir -p "releases/${LLVM_VERSION}"
-          cp metadata/source.sha256 "releases/${LLVM_VERSION}/source.sha256"
+          mkdir -p "versions/${LLVM_VERSION}"
+          cp metadata/source.sha256 "versions/${LLVM_VERSION}/source.sha256"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add MODULE.bazel .bcr/presubmit.yml "releases/${LLVM_VERSION}/source.sha256"
+          git add MODULE.bazel .bcr/presubmit.yml "versions/${LLVM_VERSION}/source.sha256"
           if git diff --cached --quiet; then
             echo "No changes, skipping commit"
           else

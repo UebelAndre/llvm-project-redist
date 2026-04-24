@@ -64,7 +64,7 @@ class ValidateVersionTest(unittest.TestCase):
         self._add_patch("fix.patch")
         errors = validate_version(self.version_dir)
         self.assertEqual(len(errors), 1)
-        self.assertIn("does not match NNN_description.patch", errors[0])
+        self.assertIn("does not match", errors[0])
 
     def test_bad_naming_two_digit_prefix(self):
         self._add_presubmit()
@@ -120,6 +120,11 @@ class ValidateVersionTest(unittest.TestCase):
         self.patches_dir.mkdir()
         self.assertEqual(validate_version(self.version_dir), [])
 
+    def test_dash_separated_name_is_valid(self):
+        self._add_presubmit()
+        self._add_patch("001-fix-build.patch")
+        self.assertEqual(validate_version(self.version_dir), [])
+
     def test_error_includes_patches_subpath(self):
         self._add_presubmit()
         self._add_patch("fix.patch")
@@ -130,68 +135,68 @@ class ValidateVersionTest(unittest.TestCase):
 class ValidateTest(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
-        self.releases_dir = Path(self.tmpdir.name) / "releases"
-        self.releases_dir.mkdir()
+        self.versions_dir = Path(self.tmpdir.name) / "versions"
+        self.versions_dir.mkdir()
 
     def tearDown(self):
         self.tmpdir.cleanup()
 
-    def test_empty_releases_dir(self):
-        self.assertEqual(validate(self.releases_dir), [])
+    def test_empty_versions_dir(self):
+        self.assertEqual(validate(self.versions_dir), [])
 
     def test_nonexistent_dir(self):
         absent = Path(self.tmpdir.name) / "nope"
         self.assertEqual(validate(absent), [])
 
     def test_valid_multiple_versions(self):
-        v1 = self.releases_dir / "20.0.0"
+        v1 = self.versions_dir / "20.0.0"
         v1.mkdir()
         (v1 / "presubmit.yml").write_text("tasks: {}\n")
         (v1 / "patches").mkdir()
         (v1 / "patches" / "001_fix.patch").touch()
 
-        v2 = self.releases_dir / "21.0.0"
+        v2 = self.versions_dir / "21.0.0"
         v2.mkdir()
         (v2 / "presubmit.yml").write_text("tasks: {}\n")
         (v2 / "patches").mkdir()
         (v2 / "patches" / "001_a.patch").touch()
         (v2 / "patches" / "002_b.patch").touch()
 
-        self.assertEqual(validate(self.releases_dir), [])
+        self.assertEqual(validate(self.versions_dir), [])
 
     def test_errors_across_versions(self):
-        v1 = self.releases_dir / "20.0.0"
+        v1 = self.versions_dir / "20.0.0"
         v1.mkdir()
         (v1 / "presubmit.yml").write_text("tasks: {}\n")
         (v1 / "patches").mkdir()
         (v1 / "patches" / "002_bad_start.patch").touch()
 
-        v2 = self.releases_dir / "21.0.0"
+        v2 = self.versions_dir / "21.0.0"
         v2.mkdir()
         (v2 / "presubmit.yml").write_text("tasks: {}\n")
         (v2 / "patches").mkdir()
         (v2 / "patches" / "bad.patch").touch()
 
-        errors = validate(self.releases_dir)
+        errors = validate(self.versions_dir)
         self.assertEqual(len(errors), 2)
 
-    def test_ignores_files_in_releases_root(self):
-        (self.releases_dir / ".gitkeep").touch()
-        self.assertEqual(validate(self.releases_dir), [])
+    def test_ignores_files_in_versions_root(self):
+        (self.versions_dir / ".gitkeep").touch()
+        self.assertEqual(validate(self.versions_dir), [])
 
     def test_missing_presubmit_across_versions(self):
-        v1 = self.releases_dir / "20.0.0"
+        v1 = self.versions_dir / "20.0.0"
         v1.mkdir()
         (v1 / "patches").mkdir()
         (v1 / "patches" / "001_fix.patch").touch()
 
-        v2 = self.releases_dir / "21.0.0"
+        v2 = self.versions_dir / "21.0.0"
         v2.mkdir()
         (v2 / "presubmit.yml").write_text("tasks: {}\n")
         (v2 / "patches").mkdir()
         (v2 / "patches" / "001_a.patch").touch()
 
-        errors = validate(self.releases_dir)
+        errors = validate(self.versions_dir)
         self.assertEqual(len(errors), 1)
         self.assertIn("20.0.0", errors[0])
         self.assertIn("missing required presubmit.yml", errors[0])

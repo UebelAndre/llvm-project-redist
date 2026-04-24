@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Validate version directories under releases/.
+"""Validate version directories under versions/.
 
-Each releases/{version}/patches/ directory may contain patch files matching
+Each versions/{version}/patches/ directory may contain patch files matching
 the pattern NNN_description.patch (three-digit zero-padded prefix). This
 module validates that:
   - All .patch files follow the NNN_*.patch naming convention.
@@ -9,7 +9,7 @@ module validates that:
   - A presubmit.yml file is present in every non-empty version directory.
 
 Usage:
-    python3 validate_patches.py <releases_dir>
+    python3 validate_patches.py <versions_dir>
 """
 
 import argparse
@@ -17,7 +17,7 @@ import re
 import sys
 from pathlib import Path
 
-PATCH_RE = re.compile(r"^(\d{3})_.+\.patch$")
+PATCH_RE = re.compile(r"^(\d{3})[_-].+\.patch$")
 
 IGNORED_FILES = {".gitkeep"}
 
@@ -25,7 +25,7 @@ IGNORED_FILES = {".gitkeep"}
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("releases_dir", type=Path, help="Path to releases/ directory")
+    parser.add_argument("versions_dir", type=Path, help="Path to versions/ directory")
     return parser.parse_args()
 
 
@@ -66,7 +66,7 @@ def validate_version(version_dir: Path) -> list[str]:
         m = PATCH_RE.match(patch.name)
         if not m:
             errors.append(
-                f"{version_dir.name}/patches/{patch.name}: does not match NNN_description.patch"
+                f"{version_dir.name}/patches/{patch.name}: does not match NNN_description.patch or NNN-description.patch"
             )
             continue
         numbers.append(int(m.group(1)))
@@ -86,17 +86,17 @@ def validate_version(version_dir: Path) -> list[str]:
     return errors
 
 
-def validate(releases_dir: Path) -> list[str]:
-    """Validate all version directories under a releases/ root.
+def validate(versions_dir: Path) -> list[str]:
+    """Validate all version directories under a versions/ root.
 
     Returns a list of error strings (empty if everything is valid).
     """
     errors: list[str] = []
 
-    if not releases_dir.is_dir():
+    if not versions_dir.is_dir():
         return errors
 
-    for entry in sorted(releases_dir.iterdir()):
+    for entry in sorted(versions_dir.iterdir()):
         if not entry.is_dir():
             continue
         errors.extend(validate_version(entry))
@@ -107,7 +107,7 @@ def validate(releases_dir: Path) -> list[str]:
 def main() -> None:
     args = parse_args()
 
-    errors = validate(args.releases_dir)
+    errors = validate(args.versions_dir)
     if errors:
         for e in errors:
             print(f"ERROR: {e}", file=sys.stderr)

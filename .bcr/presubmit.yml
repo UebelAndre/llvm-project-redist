@@ -1,6 +1,6 @@
-# AUTO-MANAGED: Overwritten by the release workflow from releases/{version}/presubmit.yml.
+# AUTO-MANAGED: Overwritten by the release workflow from versions/{version}/presubmit.yml.
 # This file serves as a reference template. To add a new LLVM version, copy
-# this into releases/{version}/presubmit.yml and customize for that release.
+# this into versions/{version}/presubmit.yml and customize for that release.
 bcr_test_module:
   module_path: ""
   matrix:

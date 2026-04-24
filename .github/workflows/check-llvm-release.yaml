@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
-          VERSION_DIR="releases/${LLVM_VERSION}"
+          VERSION_DIR="versions/${LLVM_VERSION}"
 
           mkdir -p "${VERSION_DIR}"
 
@@ -94,11 +94,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add "releases/${LLVM_VERSION}/"
+          git add "versions/${LLVM_VERSION}/"
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Bootstrap releases/${LLVM_VERSION}"
+            git commit -m "Bootstrap versions/${LLVM_VERSION}"
             git push origin HEAD
           fi
 

@@ -37,6 +37,6 @@ py_test(
 py_test(
     name = "validate_patches_repo_test",
     srcs = ["validate_patches_repo_test.py"],
-    data = ["//releases"],
+    data = ["//versions"],
     deps = [":validate_patches"],
 )

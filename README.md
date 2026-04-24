@@ -17,10 +17,10 @@ Base releases match upstream LLVM versions. Patched releases (`.bcr.N`) incorpor
 
 ## Contributing patches
 
-Each LLVM version has a directory under `releases/`:
+Each LLVM version has a directory under `versions/`:
 
 ```
-releases/
+versions/
   20.1.0/
     presubmit.yml        # required: BCR presubmit test config
     source.sha256         # auto-generated: upstream tarball integrity
@@ -31,23 +31,23 @@ releases/
 
 ### Adding a new LLVM version
 
-Run the **Check LLVM Release** workflow from the Actions tab with the `llvm_tag` input (e.g. `llvmorg-20.1.0`). It bootstraps `releases/{version}/presubmit.yml` from the template and dispatches the release build automatically. The same workflow runs on a cron schedule to detect new upstream releases.
+Run the **Check LLVM Release** workflow from the Actions tab with the `llvm_tag` input (e.g. `llvmorg-20.1.0`). It bootstraps `versions/{version}/presubmit.yml` from the template and dispatches the release build automatically. The same workflow runs on a cron schedule to detect new upstream releases.
 
 To do it manually:
 
-1. Create `releases/{version}/presubmit.yml`. Copy `.bcr/presubmit.yml` as a starting point and adjust test targets, C++ standard flags, and platform support for the specific LLVM version.
+1. Create `versions/{version}/presubmit.yml`. Copy `.bcr/presubmit.yml` as a starting point and adjust test targets, C++ standard flags, and platform support for the specific LLVM version.
 2. Run the **Release** workflow with the `llvm_tag` input.
 
 ### Adding or updating patches
 
-1. Add or modify git-formatted patch files in `releases/{version}/patches/` named `NNN_description.patch` where `NNN` is a zero-padded three-digit sequence number starting at `001`. You can add multiple patches in a single PR.
-2. Include or update `releases/{version}/presubmit.yml` for the target version.
+1. Add or modify git-formatted patch files in `versions/{version}/patches/` named `NNN_description.patch` where `NNN` is a zero-padded three-digit sequence number starting at `001`. You can add multiple patches in a single PR.
+2. Include or update `versions/{version}/presubmit.yml` for the target version.
 3. Open a pull request. CI will validate patch naming, build a preview artifact with all patches applied, and upload it for review.
 4. On merge to `main`, a workflow automatically computes the next `.bcr.N` version and cuts a release containing all current patches.
 
 ### Patch rules
 
-- Files must match `NNN_description.patch` (e.g. `001_fix_build.patch`).
+- Files must match `NNN_description.patch` or `NNN-description.patch` (e.g. `001_fix_build.patch`, `001-fix-build.patch`).
 - Numbers must start at `001` and be strictly sequential with no gaps.
 - All patches are applied together with `patch -p1` from the source root in numeric order.
 - Every version directory with content must include a `presubmit.yml`.
@@ -56,9 +56,9 @@ To do it manually:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `check-llvm-release.yml` | Cron (every 6h), manual (`workflow_dispatch`) | Detects new upstream LLVM releases or seeds a specific version; bootstraps `releases/{version}/` and dispatches `release.yml` |
+| `check-llvm-release.yml` | Cron (every 6h), manual (`workflow_dispatch`) | Detects new upstream LLVM releases or seeds a specific version; bootstraps `versions/{version}/` and dispatches `release.yml` |
 | `release.yml` | `workflow_dispatch`, `pull_request` | Builds the repackaged archive; on dispatch, publishes a release; on PR, uploads a preview artifact |
-| `release-patched.yml` | Push to `main` touching `releases/**` | Computes next `.bcr.N` and dispatches `release.yml` |
+| `release-patched.yml` | Push to `main` touching `versions/**` | Computes next `.bcr.N` and dispatches `release.yml` |
 | `bcr-publish.yml` | Release published | Submits the release to the Bazel Central Registry |
 
 ## Local development
