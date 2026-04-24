@@ -5,8 +5,8 @@ on:
     - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
-      llvm_tag:
-        description: "LLVM release tag to seed (e.g. llvmorg-20.1.0). Leave empty to check for latest."
+      llvm_version:
+        description: "LLVM version to seed (e.g. 20.1.0). Leave empty to check for latest."
         required: false
         type: string
         default: ""
@@ -19,18 +19,18 @@ jobs:
   check:
     runs-on: ubuntu-latest
     outputs:
-      llvm_tag: ${{ steps.resolve.outputs.llvm_tag }}
+      llvm_version: ${{ steps.resolve.outputs.llvm_version }}
     steps:
-      - name: Resolve LLVM tag
+      - name: Resolve LLVM version
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          if [ -n "${{ inputs.llvm_tag }}" ]; then
-            LLVM_TAG="${{ inputs.llvm_tag }}"
-            echo "Using manually specified tag: ${LLVM_TAG}"
+          if [ -n "${{ inputs.llvm_version }}" ]; then
+            LLVM_VERSION="${{ inputs.llvm_version }}"
+            echo "Using manually specified version: ${LLVM_VERSION}"
           else
             LLVM_RELEASE=$(gh api repos/llvm/llvm-project/releases/latest --jq '{tag: .tag_name, prerelease: .prerelease, draft: .draft}')
             LLVM_TAG=$(echo "$LLVM_RELEASE" | jq -r '.tag')
@@ -41,40 +41,35 @@ jobs:
 
             if [ "$IS_PRERELEASE" = "true" ] || [ "$IS_DRAFT" = "true" ]; then
               echo "Skipping pre-release or draft"
-              echo "llvm_tag=" >> "$GITHUB_OUTPUT"
+              echo "llvm_version=" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+
+            LLVM_VERSION="${LLVM_TAG#llvmorg-}"
           fi
 
-          if gh api "repos/${{ github.repository }}/releases/tags/${LLVM_TAG}" > /dev/null 2>&1; then
-            echo "Release ${LLVM_TAG} already exists in this repo, nothing to do"
-            echo "llvm_tag=" >> "$GITHUB_OUTPUT"
+          RELEASE_TAG="llvmorg-${LLVM_VERSION}"
+          if gh api "repos/${{ github.repository }}/releases/tags/${RELEASE_TAG}" > /dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists in this repo, nothing to do"
+            echo "llvm_version=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "llvm_tag=${LLVM_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Will prepare release for: ${LLVM_TAG}"
+          echo "llvm_version=${LLVM_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Will prepare release for: ${LLVM_VERSION}"
 
   prepare:
     needs: check
-    if: needs.check.outputs.llvm_tag != ''
+    if: needs.check.outputs.llvm_version != ''
     runs-on: ubuntu-latest
     steps:
-      - name: Parse version
-        id: version
-        run: |
-          set -euo pipefail
-          TAG="${{ needs.check.outputs.llvm_tag }}"
-          LLVM_VERSION="${TAG#llvmorg-}"
-          echo "llvm_version=${LLVM_VERSION}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Bootstrap version directory
         run: |
           set -euo pipefail
-          LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
+          LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
           VERSION_DIR="versions/${LLVM_VERSION}"
 
           mkdir -p "${VERSION_DIR}"
@@ -89,7 +84,7 @@ jobs:
       - name: Commit version directory
         run: |
           set -euo pipefail
-          LLVM_VERSION="${{ steps.version.outputs.llvm_version }}"
+          LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -107,8 +102,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="${{ needs.check.outputs.llvm_tag }}"
-          echo "Dispatching release.yaml for ${TAG}"
+          LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
+          echo "Dispatching release.yaml for ${LLVM_VERSION}"
           gh workflow run release.yaml \
             --repo "${{ github.repository }}" \
-            -f llvm_tag="${TAG}"
+            -f llvm_version="${LLVM_VERSION}"

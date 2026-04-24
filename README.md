@@ -56,10 +56,10 @@ To do it manually:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `check-llvm-release.yml` | Cron (every 6h), manual (`workflow_dispatch`) | Detects new upstream LLVM releases or seeds a specific version; bootstraps `versions/{version}/` and dispatches `release.yml` |
-| `release.yml` | `workflow_dispatch`, `pull_request` | Builds the repackaged archive; on dispatch, publishes a release; on PR, uploads a preview artifact |
-| `release-patched.yml` | Push to `main` touching `versions/**` | Computes next `.bcr.N` and dispatches `release.yml` |
-| `bcr-publish.yml` | Release published | Submits the release to the Bazel Central Registry |
+| `ci.yaml` | `pull_request`, push to `main` touching `versions/**` | Validates patches, builds preview artifacts; on merge, computes next `.bcr.N` and dispatches `release.yaml` |
+| `check-llvm-release.yaml` | Cron (every 6h), manual (`workflow_dispatch`) | Detects new upstream LLVM releases or seeds a specific version; bootstraps `versions/{version}/` and dispatches `release.yaml` |
+| `release.yaml` | `workflow_dispatch` | Builds the repackaged archive and publishes a GitHub release |
+| `bcr-publish.yaml` | Release published | Submits the release to the Bazel Central Registry |
 
 ## Local development
 
