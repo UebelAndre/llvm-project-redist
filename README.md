@@ -22,7 +22,8 @@ Each LLVM version has a directory under `versions/`:
 ```
 versions/
   20.1.0/
-    presubmit.yml        # required: BCR presubmit test config
+    version.txt           # required: release version (e.g. 20.1.0 or 20.1.0.bcr.1)
+    presubmit.yml         # required: BCR presubmit test config
     source.sha256         # auto-generated: upstream tarball integrity
     patches/
       001_fix_clang.patch  # git-formatted patches, applied in order
@@ -41,22 +42,24 @@ To do it manually:
 ### Adding or updating patches
 
 1. Add or modify git-formatted patch files in `versions/{version}/patches/` named `NNN_description.patch` where `NNN` is a zero-padded three-digit sequence number starting at `001`. You can add multiple patches in a single PR.
-2. Include or update `versions/{version}/presubmit.yml` for the target version.
-3. Open a pull request. CI will validate patch naming, build a preview artifact with all patches applied, and upload it for review.
-4. On merge to `main`, a workflow automatically computes the next `.bcr.N` version and cuts a release containing all current patches.
+2. Update `versions/{version}/version.txt` to the desired `.bcr.N` version (e.g. `20.1.0.bcr.1`).
+3. Include or update `versions/{version}/presubmit.yml` for the target version.
+4. Open a pull request. CI will validate patch naming and `version.txt`, build the artifact, and upload it for review.
+5. On merge to `main`, CI reads `version.txt` and dispatches a release with that version.
 
 ### Patch rules
 
 - Files must match `NNN_description.patch` or `NNN-description.patch` (e.g. `001_fix_build.patch`, `001-fix-build.patch`).
 - Numbers must start at `001` and be strictly sequential with no gaps.
 - All patches are applied together with `patch -p1` from the source root in numeric order.
-- Every version directory with content must include a `presubmit.yml`.
+- Every version directory with content must include a `version.txt` and `presubmit.yml`.
+- `version.txt` must contain the directory name (e.g. `20.1.0`) or the directory name with a `.bcr.N` suffix (e.g. `20.1.0.bcr.1`).
 
 ## Workflows
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `ci.yaml` | `pull_request`, push to `main` touching `versions/**` | Validates patches, builds preview artifacts; on merge, computes next `.bcr.N` and dispatches `release.yaml` |
+| `ci.yaml` | `pull_request`, push to `main` touching `versions/**` | Validates patches and `version.txt`, builds artifacts; on merge, reads `version.txt` and dispatches `release.yaml` |
 | `check-llvm-release.yaml` | Cron (every 6h), manual (`workflow_dispatch`) | Detects new upstream LLVM releases or seeds a specific version; bootstraps `versions/{version}/` and dispatches `release.yaml` |
 | `release.yaml` | `workflow_dispatch` | Builds the repackaged archive and publishes a GitHub release |
 | `bcr-publish.yaml` | Release published | Submits the release to the Bazel Central Registry |

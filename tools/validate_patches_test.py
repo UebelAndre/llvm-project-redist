@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.validate_patches import validate, validate_version
+from tools.validate_patches import validate, validate_version, validate_version_txt
 
 
 class ValidateVersionTest(unittest.TestCase):
@@ -21,6 +21,11 @@ class ValidateVersionTest(unittest.TestCase):
     def _add_presubmit(self):
         (self.version_dir / "presubmit.yml").write_text("tasks: {}\n")
 
+    def _add_version_txt(self, content=None):
+        if content is None:
+            content = self.version_dir.name
+        (self.version_dir / "version.txt").write_text(content + "\n")
+
     def _add_patch(self, name):
         self.patches_dir.mkdir(exist_ok=True)
         (self.patches_dir / name).touch()
@@ -34,11 +39,13 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_single_patch_starting_at_001(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("001_fix_build.patch")
         self.assertEqual(validate_version(self.version_dir), [])
 
     def test_sequential_patches(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("001_first.patch")
         self._add_patch("002_second.patch")
         self._add_patch("003_third.patch")
@@ -46,6 +53,7 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_gap_in_sequence(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("001_first.patch")
         self._add_patch("003_third.patch")
         errors = validate_version(self.version_dir)
@@ -54,6 +62,7 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_not_starting_at_001(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("002_second.patch")
         errors = validate_version(self.version_dir)
         self.assertEqual(len(errors), 1)
@@ -61,6 +70,7 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_bad_naming_no_prefix(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("fix.patch")
         errors = validate_version(self.version_dir)
         self.assertEqual(len(errors), 1)
@@ -68,6 +78,7 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_bad_naming_two_digit_prefix(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("01_fix.patch")
         errors = validate_version(self.version_dir)
         self.assertEqual(len(errors), 1)
@@ -75,6 +86,7 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_bad_naming_no_underscore(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("001fix.patch")
         errors = validate_version(self.version_dir)
         self.assertEqual(len(errors), 1)
@@ -82,6 +94,7 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_non_patch_files_in_patches_dir_ignored(self):
         self._add_presubmit()
+        self._add_version_txt()
         self.patches_dir.mkdir(exist_ok=True)
         (self.patches_dir / "README.md").touch()
         self._add_patch("001_fix.patch")
@@ -89,6 +102,7 @@ class ValidateVersionTest(unittest.TestCase):
 
     def test_duplicate_numbers(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("001_alpha.patch")
         self._add_patch("001_bravo.patch")
         errors = validate_version(self.version_dir)
@@ -96,6 +110,7 @@ class ValidateVersionTest(unittest.TestCase):
         self.assertIn("expected patch 002", errors[0])
 
     def test_missing_presubmit_with_patches(self):
+        self._add_version_txt()
         self._add_patch("001_fix.patch")
         errors = validate_version(self.version_dir)
         self.assertTrue(any("missing required presubmit.yml" in e for e in errors))
@@ -103,30 +118,35 @@ class ValidateVersionTest(unittest.TestCase):
     def test_missing_presubmit_with_source_sha256(self):
         (self.version_dir / "source.sha256").write_text("abc123\n")
         errors = validate_version(self.version_dir)
-        self.assertEqual(len(errors), 1)
-        self.assertIn("missing required presubmit.yml", errors[0])
+        self.assertTrue(any("missing required presubmit.yml" in e for e in errors))
+        self.assertTrue(any("missing required version.txt" in e for e in errors))
 
-    def test_presubmit_only_is_valid(self):
+    def test_presubmit_and_version_txt_is_valid(self):
         self._add_presubmit()
+        self._add_version_txt()
         self.assertEqual(validate_version(self.version_dir), [])
 
     def test_no_patches_dir_is_valid(self):
         self._add_presubmit()
+        self._add_version_txt()
         (self.version_dir / "source.sha256").write_text("abc123\n")
         self.assertEqual(validate_version(self.version_dir), [])
 
     def test_empty_patches_dir_is_valid(self):
         self._add_presubmit()
+        self._add_version_txt()
         self.patches_dir.mkdir()
         self.assertEqual(validate_version(self.version_dir), [])
 
     def test_dash_separated_name_is_valid(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("001-fix-build.patch")
         self.assertEqual(validate_version(self.version_dir), [])
 
     def test_error_includes_patches_subpath(self):
         self._add_presubmit()
+        self._add_version_txt()
         self._add_patch("fix.patch")
         errors = validate_version(self.version_dir)
         self.assertIn("patches/fix.patch", errors[0])
@@ -152,12 +172,14 @@ class ValidateTest(unittest.TestCase):
         v1 = self.versions_dir / "20.0.0"
         v1.mkdir()
         (v1 / "presubmit.yml").write_text("tasks: {}\n")
+        (v1 / "version.txt").write_text("20.0.0\n")
         (v1 / "patches").mkdir()
         (v1 / "patches" / "001_fix.patch").touch()
 
         v2 = self.versions_dir / "21.0.0"
         v2.mkdir()
         (v2 / "presubmit.yml").write_text("tasks: {}\n")
+        (v2 / "version.txt").write_text("21.0.0\n")
         (v2 / "patches").mkdir()
         (v2 / "patches" / "001_a.patch").touch()
         (v2 / "patches" / "002_b.patch").touch()
@@ -168,12 +190,14 @@ class ValidateTest(unittest.TestCase):
         v1 = self.versions_dir / "20.0.0"
         v1.mkdir()
         (v1 / "presubmit.yml").write_text("tasks: {}\n")
+        (v1 / "version.txt").write_text("20.0.0\n")
         (v1 / "patches").mkdir()
         (v1 / "patches" / "002_bad_start.patch").touch()
 
         v2 = self.versions_dir / "21.0.0"
         v2.mkdir()
         (v2 / "presubmit.yml").write_text("tasks: {}\n")
+        (v2 / "version.txt").write_text("21.0.0\n")
         (v2 / "patches").mkdir()
         (v2 / "patches" / "bad.patch").touch()
 
@@ -187,12 +211,14 @@ class ValidateTest(unittest.TestCase):
     def test_missing_presubmit_across_versions(self):
         v1 = self.versions_dir / "20.0.0"
         v1.mkdir()
+        (v1 / "version.txt").write_text("20.0.0\n")
         (v1 / "patches").mkdir()
         (v1 / "patches" / "001_fix.patch").touch()
 
         v2 = self.versions_dir / "21.0.0"
         v2.mkdir()
         (v2 / "presubmit.yml").write_text("tasks: {}\n")
+        (v2 / "version.txt").write_text("21.0.0\n")
         (v2 / "patches").mkdir()
         (v2 / "patches" / "001_a.patch").touch()
 
@@ -200,6 +226,63 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("20.0.0", errors[0])
         self.assertIn("missing required presubmit.yml", errors[0])
+
+
+class ValidateVersionTxtTest(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.version_dir = Path(self.tmpdir.name) / "20.0.0"
+        self.version_dir.mkdir()
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def test_base_version_matches_dir(self):
+        (self.version_dir / "version.txt").write_text("20.0.0\n")
+        self.assertEqual(validate_version_txt(self.version_dir), [])
+
+    def test_bcr_version(self):
+        (self.version_dir / "version.txt").write_text("20.0.0.bcr.1\n")
+        self.assertEqual(validate_version_txt(self.version_dir), [])
+
+    def test_bcr_multi_digit(self):
+        (self.version_dir / "version.txt").write_text("20.0.0.bcr.12\n")
+        self.assertEqual(validate_version_txt(self.version_dir), [])
+
+    def test_wrong_base_version(self):
+        (self.version_dir / "version.txt").write_text("21.0.0\n")
+        errors = validate_version_txt(self.version_dir)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("must be '20.0.0' or '20.0.0.bcr.N'", errors[0])
+
+    def test_wrong_bcr_prefix(self):
+        (self.version_dir / "version.txt").write_text("21.0.0.bcr.1\n")
+        errors = validate_version_txt(self.version_dir)
+        self.assertEqual(len(errors), 1)
+
+    def test_arbitrary_suffix(self):
+        (self.version_dir / "version.txt").write_text("20.0.0.preview\n")
+        errors = validate_version_txt(self.version_dir)
+        self.assertEqual(len(errors), 1)
+
+    def test_empty_content(self):
+        (self.version_dir / "version.txt").write_text("\n")
+        errors = validate_version_txt(self.version_dir)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("empty", errors[0])
+
+    def test_missing_file_non_empty_dir(self):
+        (self.version_dir / "presubmit.yml").write_text("tasks: {}\n")
+        errors = validate_version_txt(self.version_dir)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("missing required version.txt", errors[0])
+
+    def test_missing_file_empty_dir(self):
+        self.assertEqual(validate_version_txt(self.version_dir), [])
+
+    def test_whitespace_stripped(self):
+        (self.version_dir / "version.txt").write_text("  20.0.0  \n")
+        self.assertEqual(validate_version_txt(self.version_dir), [])
 
 
 if __name__ == "__main__":

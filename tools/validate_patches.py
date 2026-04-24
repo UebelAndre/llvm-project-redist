@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Validate version directories under versions/.
 
-Each versions/{version}/patches/ directory may contain patch files matching
-the pattern NNN_description.patch (three-digit zero-padded prefix). This
-module validates that:
-  - All .patch files follow the NNN_*.patch naming convention.
-  - Numbers start at 001 and are strictly sequential with no gaps or duplicates.
-  - A presubmit.yml file is present in every non-empty version directory.
+Each versions/{version}/ directory may contain:
+  - ``version.txt`` (required): version string matching the directory name,
+    optionally with a ``.bcr.N`` suffix (e.g. ``17.0.3`` or ``17.0.3.bcr.1``).
+  - ``presubmit.yml`` (required): BCR presubmit test configuration.
+  - ``patches/`` (optional): patch files matching ``NNN_description.patch``
+    (three-digit zero-padded prefix, sequential starting at 001).
 
 Usage:
     python3 validate_patches.py <versions_dir>
@@ -39,11 +39,43 @@ def _is_non_empty(version_dir: Path) -> bool:
     return False
 
 
+def validate_version_txt(version_dir: Path) -> list[str]:
+    """Validate the version.txt file in a version directory.
+
+    The content must be exactly the directory name, optionally followed
+    by ``.bcr.N`` where N is one or more digits.
+
+    Returns a list of error strings (empty if valid).
+    """
+    errors: list[str] = []
+    version_file = version_dir / "version.txt"
+    dir_name = version_dir.name
+
+    if not version_file.is_file():
+        if _is_non_empty(version_dir):
+            errors.append(f"{dir_name}: missing required version.txt")
+        return errors
+
+    version = version_file.read_text().strip()
+    if not version:
+        errors.append(f"{dir_name}: version.txt is empty")
+        return errors
+
+    pattern = re.compile(rf"^{re.escape(dir_name)}(\.bcr\.\d+)?$")
+    if not pattern.match(version):
+        errors.append(
+            f"{dir_name}: version.txt contains '{version}' "
+            f"but must be '{dir_name}' or '{dir_name}.bcr.N'"
+        )
+
+    return errors
+
+
 def validate_version(version_dir: Path) -> list[str]:
     """Validate a single version directory.
 
-    Checks patches/ subdirectory for naming/sequencing and requires
-    presubmit.yml when the directory has meaningful content.
+    Checks version.txt, presubmit.yml presence, and patches/ subdirectory
+    for naming/sequencing.
 
     Returns a list of error strings (empty if valid).
     """
@@ -51,6 +83,8 @@ def validate_version(version_dir: Path) -> list[str]:
 
     if _is_non_empty(version_dir) and not (version_dir / "presubmit.yml").exists():
         errors.append(f"{version_dir.name}: missing required presubmit.yml")
+
+    errors.extend(validate_version_txt(version_dir))
 
     patches_dir = version_dir / "patches"
     if not patches_dir.is_dir():

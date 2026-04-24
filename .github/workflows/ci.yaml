@@ -59,7 +59,15 @@ jobs:
             [ -z "$V" ] && continue
             $FIRST || MATRIX+=","
             FIRST=false
-            MATRIX+="{\"llvm_version\":\"${V}\",\"version\":\"${V}.bcr.preview\",\"tag\":\"\",\"bcr_version\":\"preview\"}"
+
+            VERSION_FILE="versions/${V}/version.txt"
+            if [ -f "$VERSION_FILE" ]; then
+              VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+            else
+              VERSION="${V}"
+            fi
+
+            MATRIX+="{\"llvm_version\":\"${V}\",\"version\":\"${VERSION}\"}"
           done <<< "$VERSIONS"
           MATRIX+="]"
 
@@ -150,30 +158,27 @@ jobs:
           while IFS= read -r LLVM_VERSION; do
             [ -z "$LLVM_VERSION" ] && continue
 
-            BASE_TAG="llvmorg-${LLVM_VERSION}"
-            HAS_BASE=$(gh api "repos/${{ github.repository }}/releases/tags/${BASE_TAG}" \
-              > /dev/null 2>&1 && echo "true" || echo "false")
+            VERSION_FILE="versions/${LLVM_VERSION}/version.txt"
+            if [ ! -f "$VERSION_FILE" ]; then
+              echo "No version.txt for ${LLVM_VERSION}, skipping"
+              continue
+            fi
 
-            PATCH_DIR="versions/${LLVM_VERSION}/patches"
-            PATCH_COUNT=$(find "$PATCH_DIR" -name '*.patch' 2>/dev/null | wc -l)
+            VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
 
-            if [ "$HAS_BASE" = "false" ]; then
-              echo "Dispatching base release for ${LLVM_VERSION}"
+            if [ "$VERSION" = "$LLVM_VERSION" ]; then
+              echo "Dispatching base release for ${VERSION}"
               gh workflow run release.yaml \
                 --repo "${{ github.repository }}" \
                 -f llvm_version="${LLVM_VERSION}"
-            elif [ "$PATCH_COUNT" -gt 0 ]; then
-              EXISTING=$(gh api "repos/${{ github.repository }}/releases" \
-                --paginate --jq '.[].tag_name' \
-                | grep -cP "^llvmorg-${LLVM_VERSION}\\.bcr\\." || true)
-              NEXT_BCR=$((EXISTING + 1))
-
-              echo "Dispatching patched release for ${LLVM_VERSION}.bcr.${NEXT_BCR}"
+            elif [[ "$VERSION" =~ \.bcr\.([0-9]+)$ ]]; then
+              BCR_VERSION="${BASH_REMATCH[1]}"
+              echo "Dispatching patched release for ${VERSION}"
               gh workflow run release.yaml \
                 --repo "${{ github.repository }}" \
                 -f llvm_version="${LLVM_VERSION}" \
-                -f bcr_version="${NEXT_BCR}"
+                -f bcr_version="${BCR_VERSION}"
             else
-              echo "Base release exists and no patches for ${LLVM_VERSION}, skipping"
+              echo "Invalid version '${VERSION}' in ${VERSION_FILE}, skipping"
             fi
           done <<< "${{ steps.detect.outputs.versions }}"

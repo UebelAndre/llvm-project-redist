@@ -94,6 +94,13 @@ jobs:
 
           mkdir -p "${VERSION_DIR}"
 
+          if [ ! -f "${VERSION_DIR}/version.txt" ]; then
+            echo "${LLVM_VERSION}" > "${VERSION_DIR}/version.txt"
+            echo "Created version.txt with ${LLVM_VERSION}"
+          else
+            echo "version.txt already exists for ${LLVM_VERSION}"
+          fi
+
           if [ ! -f "${VERSION_DIR}/presubmit.yml" ]; then
             cp .bcr/presubmit.yml "${VERSION_DIR}/presubmit.yml"
             echo "Copied template presubmit.yml to ${VERSION_DIR}/"
