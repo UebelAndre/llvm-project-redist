@@ -31,12 +31,12 @@ versions/
 
 ### Adding a new LLVM version
 
-Run the **Check LLVM Release** workflow from the Actions tab with the `llvm_tag` input (e.g. `llvmorg-20.1.0`). It bootstraps `versions/{version}/presubmit.yml` from the template and dispatches the release build automatically. The same workflow runs on a cron schedule to detect new upstream releases.
+Run the **Check LLVM Release** workflow from the Actions tab with the `llvm_version` input (e.g. `20.1.0`). It bootstraps `versions/{version}/presubmit.yml` from the template and creates a pull request for review. The same workflow runs on a cron schedule to detect new upstream releases.
 
 To do it manually:
 
 1. Create `versions/{version}/presubmit.yml`. Copy `.bcr/presubmit.yml` as a starting point and adjust test targets, C++ standard flags, and platform support for the specific LLVM version.
-2. Run the **Release** workflow with the `llvm_tag` input.
+2. Run the **Release** workflow with the `llvm_version` input.
 
 ### Adding or updating patches
 
@@ -64,6 +64,14 @@ To do it manually:
 ## Local development
 
 ```bash
+# Build a version locally (output in build/<version>/)
+python3 tools/build.py --llvm-version 17.0.3
+
+# Build a BCR patched version
+python3 tools/build.py --llvm-version 17.0.3 --bcr-version 1
+
 # Run tests via Bazel
-bazel test //scripts/...
+bazel test //tools/...
 ```
+
+The build script is the same one used in CI, ensuring parity between local and remote builds. Run `python3 tools/build.py --help` for all options.

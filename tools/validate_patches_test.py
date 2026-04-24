@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.validate_patches import validate, validate_version
+from tools.validate_patches import validate, validate_version
 
 
 class ValidateVersionTest(unittest.TestCase):

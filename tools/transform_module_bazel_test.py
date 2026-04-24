@@ -2,7 +2,7 @@ import io
 import sys
 import unittest
 
-from scripts.transform_module_bazel import transform
+from tools.transform_module_bazel import transform
 
 # Realistic upstream MODULE.bazel (matches llvm/llvm-project main)
 UPSTREAM = """\

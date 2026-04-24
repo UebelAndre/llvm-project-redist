@@ -1,14 +1,11 @@
 name: CI
 
 on:
+  pull_request: {}
   push:
-    branches:
-      - main
-  merge_group:
-  pull_request:
-    types:
-      - opened
-      - synchronize
+    branches: [main]
+    paths:
+      - "versions/**"
   workflow_dispatch:
     inputs:
       llvm_version:
@@ -32,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Validate patches
-        run: python3 scripts/validate_patches.py versions
+        run: python3 tools/validate_patches.py versions
 
       - name: Build matrix
         id: matrix
@@ -83,217 +80,14 @@ jobs:
         with:
           path: redist-repo
 
-      - name: Download LLVM source tarball
-        id: download
+      - name: Build redistribution artifact
+        id: build
         run: |
-          set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          TAG="llvmorg-${LLVM_VERSION}"
-          TARBALL="llvm-project-${LLVM_VERSION}.src.tar.xz"
-          URL="https://github.com/llvm/llvm-project/releases/download/${TAG}/${TARBALL}"
-
-          echo "Downloading ${URL}..."
-          curl -fSL -o "${TARBALL}" "${URL}"
-          echo "Download complete: $(du -h "${TARBALL}" | cut -f1)"
-
-          SHA256=$(sha256sum "${TARBALL}" | cut -d' ' -f1)
-          echo "upstream_sha256=${SHA256}" >> "$GITHUB_OUTPUT"
-          echo "Upstream SHA-256: ${SHA256}"
-
-      - name: Verify or record upstream integrity
-        run: |
-          set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          ACTUAL="${{ steps.download.outputs.upstream_sha256 }}"
-          INTEGRITY_FILE="redist-repo/versions/${LLVM_VERSION}/source.sha256"
-
-          mkdir -p "$(dirname "$INTEGRITY_FILE")"
-
-          if [ -f "$INTEGRITY_FILE" ]; then
-            EXPECTED=$(cat "$INTEGRITY_FILE")
-            if [ "$ACTUAL" != "$EXPECTED" ]; then
-              echo "ERROR: upstream tarball SHA-256 mismatch"
-              echo "  expected: ${EXPECTED}"
-              echo "  actual:   ${ACTUAL}"
-              exit 1
-            fi
-            echo "Upstream integrity verified: ${ACTUAL}"
-          else
-            echo "$ACTUAL" > "$INTEGRITY_FILE"
-            echo "Recorded upstream integrity: ${ACTUAL}"
-          fi
-
-      - name: Extract tarball
-        run: |
-          set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          tar xf "llvm-project-${LLVM_VERSION}.src.tar.xz"
-
-      - name: Apply Bazel overlay
-        run: |
-          set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          SRC="llvm-project-${LLVM_VERSION}.src"
-
-          cp -a "${SRC}/utils/bazel/llvm-project-overlay/." "${SRC}/"
-
-          for f in vulkan_sdk.bzl BUILD.bazel .bazelrc .bazelversion; do
-            if [ -e "${SRC}/utils/bazel/${f}" ]; then
-              cp "${SRC}/utils/bazel/${f}" "${SRC}/${f}"
-            fi
-          done
-
-      - name: Apply patches
-        run: |
-          set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          SRC="llvm-project-${LLVM_VERSION}.src"
-          PATCH_DIR="redist-repo/versions/${LLVM_VERSION}/patches"
-
-          if [ ! -d "$PATCH_DIR" ]; then
-            echo "No patches directory, skipping"
-            exit 0
-          fi
-
-          PATCHES=$(find "$PATCH_DIR" -name '*.patch' | sort)
-          if [ -z "$PATCHES" ]; then
-            echo "No patches found, skipping"
-            exit 0
-          fi
-
-          for p in $PATCHES; do
-            echo "Applying $(basename "$p")..."
-            patch -d "$SRC" -p1 < "$p"
-          done
-
-      - name: Transform MODULE.bazel
-        run: |
-          set -euo pipefail
-          VERSION="${{ matrix.version }}"
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          SRC="llvm-project-${LLVM_VERSION}.src"
-          UPSTREAM="${SRC}/utils/bazel/MODULE.bazel"
-
-          if [ -f "$UPSTREAM" ]; then
-            python3 redist-repo/scripts/transform_module_bazel.py \
-              "$UPSTREAM" "${SRC}/MODULE.bazel" "${VERSION}"
-          else
-            echo "No upstream MODULE.bazel found, generating minimal one"
-            cat > "${SRC}/MODULE.bazel" <<MODEOF
-          module(name = "llvm-project", version = "${VERSION}")
-          MODEOF
-          fi
-
-      - name: Transform extensions.bzl
-        run: |
-          set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          SRC="llvm-project-${LLVM_VERSION}.src"
-          UPSTREAM="${SRC}/utils/bazel/extensions.bzl"
-
-          if [ -f "$UPSTREAM" ]; then
-            python3 redist-repo/scripts/transform_extensions_bzl.py \
-              "$UPSTREAM" "${SRC}/extensions.bzl"
-          else
-            echo "No upstream extensions.bzl found, skipping transform"
-          fi
-
-      - name: Generate vars.bzl
-        shell: python3 {0}
-        env:
-          LLVM_VERSION: ${{ matrix.llvm_version }}
-        run: |
-          import os, re, textwrap
-
-          llvm_version = os.environ["LLVM_VERSION"]
-          src = f"llvm-project-{llvm_version}.src"
-
-          def extract_cmake_var(filepath, varname):
-              with open(filepath) as f:
-                  for line in f:
-                      m = re.match(
-                          rf'\s*set\s*\(\s*{re.escape(varname)}\s+(\S+)',
-                          line,
-                      )
-                      if m:
-                          return m.group(1).rstrip(")")
-              return None
-
-          version_file = f"{src}/cmake/Modules/LLVMVersion.cmake"
-          if not os.path.exists(version_file):
-              version_file = f"{src}/llvm/CMakeLists.txt"
-
-          cmake_file = f"{src}/llvm/CMakeLists.txt"
-
-          major = extract_cmake_var(version_file, "LLVM_VERSION_MAJOR") or "0"
-          minor = extract_cmake_var(version_file, "LLVM_VERSION_MINOR") or "0"
-          patch = extract_cmake_var(version_file, "LLVM_VERSION_PATCH") or "0"
-          suffix = extract_cmake_var(version_file, "LLVM_VERSION_SUFFIX") or ""
-
-          cxx_std = (
-              extract_cmake_var(cmake_file, "LLVM_REQUIRED_CXX_STANDARD")
-              or extract_cmake_var(cmake_file, "CMAKE_CXX_STANDARD")
-              or "17"
-          )
-
-          llvm_ver = f"{major}.{minor}.{patch}"
-          package_version = f"{llvm_ver}{suffix}"
-
-          variables = {
-              "CMAKE_CXX_STANDARD": cxx_std,
-              "LLVM_VERSION_MAJOR": major,
-              "LLVM_VERSION_MINOR": minor,
-              "LLVM_VERSION_PATCH": patch,
-              "LLVM_VERSION_SUFFIX": suffix,
-              "LLVM_VERSION": llvm_ver,
-              "PACKAGE_VERSION": package_version,
-          }
-
-          lines = [f"# Generated from {cmake_file}\n"]
-          for k, v in variables.items():
-              lines.append(f'{k} = "{v}"')
-          lines.append("")
-          lines.append("llvm_vars = {")
-          for k, v in variables.items():
-              lines.append(f'    "{k}": "{v}",')
-          lines.append("}")
-          lines.append("")
-
-          content = "\n".join(lines)
-          with open(f"{src}/vars.bzl", "w") as f:
-              f.write(content)
-
-          print("Generated vars.bzl:")
-          print(content)
-
-      - name: Generate targets.bzl files
-        shell: python3 {0}
-        env:
-          LLVM_VERSION: ${{ matrix.llvm_version }}
-        run: |
-          import os
-
-          llvm_version = os.environ["LLVM_VERSION"]
-          src = f"llvm-project-{llvm_version}.src"
-
-          default_targets = [
-              "AArch64", "AMDGPU", "ARM", "AVR", "BPF", "Hexagon",
-              "Lanai", "LoongArch", "Mips", "MSP430", "NVPTX", "PowerPC",
-              "RISCV", "Sparc", "SPIRV", "SystemZ", "VE", "WebAssembly",
-              "X86", "XCore",
-          ]
-
-          bolt_supported = {"AArch64", "X86", "RISCV"}
-          bolt_targets = [t for t in default_targets if t in bolt_supported]
-
-          with open(f"{src}/llvm/targets.bzl", "w") as f:
-              f.write(f"llvm_targets = {default_targets!r}\n")
-
-          with open(f"{src}/bolt/targets.bzl", "w") as f:
-              f.write(f"bolt_targets = {bolt_targets!r}\n")
-
-          print(f"llvm/targets.bzl: {default_targets}")
-          print(f"bolt/targets.bzl: {bolt_targets}")
+          python3 redist-repo/tools/build.py \
+            --llvm-version "${{ matrix.llvm_version }}" \
+            --version "${{ matrix.version }}" \
+            --versions-dir redist-repo/versions \
+            --output-dir .
 
       - name: Copy per-version presubmit.yml
         run: |
@@ -305,38 +99,6 @@ jobs:
             exit 1
           fi
           cp "$PRESUBMIT" redist-repo/.bcr/presubmit.yml
-
-      - name: Rename source directory
-        run: |
-          set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          VERSION="${{ matrix.version }}"
-          mv "llvm-project-${LLVM_VERSION}.src" "llvm-project-${VERSION}.bzl"
-
-      - name: Repackage tarball
-        id: repackage
-        run: |
-          set -euo pipefail
-          VERSION="${{ matrix.version }}"
-          SRC="llvm-project-${VERSION}.bzl"
-          OUTPUT="llvm-project-${VERSION}.bzl.tar.xz"
-
-          rm -f "${OUTPUT}"
-
-          echo "Repackaging ${SRC} as ${OUTPUT} (deterministic)..."
-          tar \
-            --sort=name \
-            --mtime='@0' \
-            --owner=0 \
-            --group=0 \
-            --numeric-owner \
-            -cf - "${SRC}" \
-            | xz -T1 > "${OUTPUT}"
-          echo "Repackage complete: $(du -h "${OUTPUT}" | cut -f1)"
-
-          SHA256=$(sha256sum "${OUTPUT}" | cut -d' ' -f1)
-          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
-          echo "SHA-256: ${SHA256}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

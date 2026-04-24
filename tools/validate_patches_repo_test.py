@@ -4,7 +4,7 @@ import os
 import unittest
 from pathlib import Path
 
-from scripts.validate_patches import validate
+from tools.validate_patches import validate
 
 
 def _find_versions_dir() -> Path:

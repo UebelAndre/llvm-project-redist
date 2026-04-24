@@ -4,7 +4,7 @@
 
 # Placeholder: overwritten by the release workflow with a transformed version
 # of the upstream llvm-project-overlay MODULE.bazel (pins retained, @llvm-raw
-# redirection removed). See scripts/transform_module_bazel.py.
+# redirection removed). See tools/transform_module_bazel.py.
 
 module(name = "llvm-project")
 

@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.transform_extensions_bzl import transform
+from tools.transform_extensions_bzl import transform
 
 # Realistic upstream extensions.bzl (matches llvm/llvm-project main)
 UPSTREAM = '''\

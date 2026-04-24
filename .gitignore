@@ -1,5 +1,6 @@
 # Git ignore patterns
 bazel-*
+build/
 user.bazelrc
 MODULE.bazel.lock
 __pycache__/

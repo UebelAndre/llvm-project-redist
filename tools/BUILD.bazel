@@ -40,3 +40,18 @@ py_test(
     data = ["//versions"],
     deps = [":validate_patches"],
 )
+
+py_library(
+    name = "build",
+    srcs = ["build.py"],
+    deps = [
+        ":transform_extensions_bzl",
+        ":transform_module_bazel",
+    ],
+)
+
+py_test(
+    name = "build_test",
+    srcs = ["build_test.py"],
+    deps = [":build"],
+)
