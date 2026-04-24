@@ -130,7 +130,7 @@ jobs:
       - name: Create PR
         if: steps.existing.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ secrets.APP_TOKEN != '' && secrets.APP_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN || github.token }}
         run: |
           set -euo pipefail
           LLVM_VERSION="${{ needs.check.outputs.llvm_version }}"
