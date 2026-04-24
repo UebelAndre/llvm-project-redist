@@ -77,7 +77,7 @@ jobs:
             NEXT_BCR=$((EXISTING + 1))
 
             echo "Dispatching release for ${LLVM_VERSION}.bcr.${NEXT_BCR}"
-            gh workflow run release.yml \
+            gh workflow run release.yaml \
               --repo "${{ github.repository }}" \
               -f llvm_tag="llvmorg-${LLVM_VERSION}" \
               -f bcr_version="${NEXT_BCR}"

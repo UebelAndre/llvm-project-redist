@@ -108,7 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ needs.check.outputs.llvm_tag }}"
-          echo "Dispatching release.yml for ${TAG}"
-          gh workflow run release.yml \
+          echo "Dispatching release.yaml for ${TAG}"
+          gh workflow run release.yaml \
             --repo "${{ github.repository }}" \
             -f llvm_tag="${TAG}"
