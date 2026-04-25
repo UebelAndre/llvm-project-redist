@@ -59,22 +59,61 @@ To do it manually:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `ci.yaml` | `pull_request`, push to `main` touching `versions/**` | Validates patches and `version.txt`, builds artifacts; on merge, reads `version.txt` and dispatches `release.yaml` |
+| `ci.yaml` | `pull_request`, push to `main` touching `versions/**` | Validates patches, `version.txt`, and `presubmit.yml`; builds artifacts; runs presubmit targets on Linux; on merge, reads `version.txt` and dispatches `release.yaml` after tests pass |
 | `check-llvm-release.yaml` | Cron (every 6h), manual (`workflow_dispatch`) | Detects new upstream LLVM releases or seeds a specific version; bootstraps `versions/{version}/` and dispatches `release.yaml` |
 | `release.yaml` | `workflow_dispatch` | Builds the repackaged archive and publishes a GitHub release |
 | `bcr-publish.yaml` | Release published | Submits the release to the Bazel Central Registry |
 
 ## Local development
 
+CI and presubmit tooling use **`bazel run //tools:…`** so Python deps (PyYAML) come from the locked [`tools/requirements.txt`](tools/requirements.txt) (`@pip_deps`). Regenerate the lock from [`tools/requirements.in`](tools/requirements.in) with:
+
 ```bash
-# Build a version locally (output in build/<version>/)
-python3 tools/build.py --llvm-version 17.0.3
+bazel run //tools:requirements.update
+```
+
+```bash
+# Build a version locally (output in build/<version>/ under the repo root)
+bazel run //tools:build -- --llvm-version 17.0.3
 
 # Build a BCR patched version
-python3 tools/build.py --llvm-version 17.0.3 --bcr-version 1
+bazel run //tools:build -- --llvm-version 17.0.3 --bcr-version 1
+
+# Validate version directories
+bazel run //tools:validate_patches -- versions
 
 # Run tests via Bazel
 bazel test //tools/...
 ```
 
-The build script is the same one used in CI, ensuring parity between local and remote builds. Run `python3 tools/build.py --help` for all options.
+Arguments after `--` are passed to the script; paths are resolved from your shell cwd (`BUILD_WORKING_DIRECTORY`). Use `bazel run //tools:build -- --help` for all build options.
+
+### Presubmit testing (BCR `presubmit.yml`)
+
+Each `versions/{version}/presubmit.yml` follows the same shape as the [Bazel Central Registry](https://github.com/bazelbuild/bazel-central-registry) module presubmit format.
+
+```bash
+# Structural validation only (fast; no LLVM Bazel tests)
+bazel run //tools:run_presubmit -- --validate --presubmit versions/17.0.3/presubmit.yml
+
+# After building, run all tasks for the current OS family (linux / macos / windows)
+bazel run //tools:run_presubmit -- \
+  --presubmit versions/17.0.3/presubmit.yml \
+  --run-host \
+  --source-dir build/17.0.3/llvm-project-17.0.3.bzl
+
+# Run one matrix-expanded task (disambiguate with --platform / --bazel)
+bazel run //tools:run_presubmit -- \
+  --presubmit versions/17.0.3/presubmit.yml \
+  --run-task run_tests \
+  --platform debian10 \
+  --bazel 7.x \
+  --source-dir build/17.0.3/llvm-project-17.0.3.bzl
+
+# Preview the dynamic Buildkite pipeline JSON (no upload)
+bazel run //tools:run_presubmit -- --pipeline --dry-run
+```
+
+**GitHub Actions:** `ci.yaml` uses Bazelisk, then `bazel run //tools:validate_patches`, `bazel run //tools:run_presubmit -- --validate`, `bazel run //tools:build`, and `bazel run //tools:run_presubmit -- --run-host` on Ubuntu (linux presubmit tasks only). Releases dispatch only after the test job succeeds.
+
+**BuildKite:** `.bazelci/presubmit.yml` runs `bazel run //tools:run_presubmit -- --pipeline`, which detects changed `versions/*/` directories, expands each version's matrix, and uploads steps. Each generated step runs `bazel run //tools:build` then `bazel run //tools:run_presubmit` for one `(task, platform, bazel)` on the matching agent queue (`default`, `macos`, `macos_arm64`, `windows`).

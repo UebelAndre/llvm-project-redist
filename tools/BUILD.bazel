@@ -1,5 +1,7 @@
 load("@rules_python//python:py_library.bzl", "py_library")
 load("@rules_python//python:py_test.bzl", "py_test")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_req_compile//:defs.bzl", "py_reqs_compiler", "py_reqs_solution_test")
 
 py_library(
     name = "transform_module_bazel",
@@ -23,7 +25,7 @@ py_test(
     deps = [":transform_extensions_bzl"],
 )
 
-py_library(
+py_binary(
     name = "validate_patches",
     srcs = ["validate_patches.py"],
 )
@@ -41,7 +43,7 @@ py_test(
     deps = [":validate_patches"],
 )
 
-py_library(
+py_binary(
     name = "build",
     srcs = ["build.py"],
     deps = [
@@ -54,4 +56,38 @@ py_test(
     name = "build_test",
     srcs = ["build_test.py"],
     deps = [":build"],
+)
+
+py_library(
+    name = "presubmit_logic",
+    srcs = ["presubmit_logic.py"],
+)
+
+py_binary(
+    name = "run_presubmit",
+    srcs = ["run_presubmit.py"],
+    deps = [
+        ":presubmit_logic",
+        "@pip_deps//pyyaml",
+    ],
+)
+
+py_test(
+    name = "run_presubmit_test",
+    srcs = ["run_presubmit_test.py"],
+    deps = [
+        ":presubmit_logic",
+        ":run_presubmit",
+    ],
+)
+
+py_reqs_compiler(
+    name = "requirements.update",
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements.txt",
+)
+
+py_reqs_solution_test(
+    name = "requirements_test",
+    compiler = ":requirements.update",
 )

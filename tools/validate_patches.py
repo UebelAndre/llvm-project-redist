@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -151,4 +152,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    _cwd = os.environ.get("BUILD_WORKING_DIRECTORY")
+    if _cwd:
+        os.chdir(_cwd)
     main()

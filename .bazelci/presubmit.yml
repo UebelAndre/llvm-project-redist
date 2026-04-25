@@ -1,22 +1,10 @@
-matrix:
-  platform:
-    - debian10
-    - debian13
-    - debian13_arm64
-    - macos_arm64
-    - ubuntu2004
-    - ubuntu2004_arm64
-    - windows
-  bazel:
-    - "7.x"
-    - "8.x"
-    - "9.x"
+---
+# Bootstrap for BuildKite: generates dynamic per-version / per-matrix steps (like BCR).
+# PyYAML is provided via @pip_deps when using `bazel run //tools:run_presubmit`.
 tasks:
-  verify_targets:
-    name: "Run test module"
-    platform: ${{ platform }}
-    bazel: ${{ bazel }}
-    build_targets:
-    - "@llvm-project//..."
-    test_targets:
-    - "@llvm-project//..."
+  generate_pipeline:
+    name: "Generate presubmit jobs"
+    platform: ubuntu2204
+    bazel: 8.x
+    shell_commands:
+      - "bazel run //tools:run_presubmit -- --pipeline"

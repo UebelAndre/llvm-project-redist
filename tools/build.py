@@ -7,17 +7,17 @@ transforms MODULE.bazel / extensions.bzl, generates build files, and
 repackages everything into a deterministic .tar.xz archive.
 
 Usage:
-    # Local build (output in build/17.0.3/)
-    python3 scripts/build.py --llvm-version 17.0.3
+    # Local build (from repo root; output under build/17.0.3/)
+    bazel run //tools:build -- --llvm-version 17.0.3
 
     # BCR patch release
-    python3 scripts/build.py --llvm-version 17.0.3 --bcr-version 1
+    bazel run //tools:build -- --llvm-version 17.0.3 --bcr-version 1
 
-    # CI build with explicit paths
-    python3 scripts/build.py \\
+    # CI-style (cwd = checkout root; versions under ./versions)
+    bazel run //tools:build -- \\
         --llvm-version 17.0.3 \\
         --version 17.0.3.bcr.preview \\
-        --versions-dir redist-repo/versions \\
+        --versions-dir versions \\
         --output-dir . \\
         --metadata-dir metadata
 """
@@ -465,4 +465,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    _cwd = os.environ.get("BUILD_WORKING_DIRECTORY")
+    if _cwd:
+        os.chdir(_cwd)
     main()

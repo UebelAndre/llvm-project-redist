@@ -47,19 +47,24 @@ jobs:
         with:
           path: redist-repo
 
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
       - name: Validate patches
         if: steps.version.outputs.bcr_version != ''
-        run: python3 redist-repo/tools/validate_patches.py redist-repo/versions
+        working-directory: redist-repo
+        run: bazel run //tools:validate_patches -- versions
 
       - name: Build redistribution artifact
         id: build
+        working-directory: redist-repo
         run: |
-          python3 redist-repo/tools/build.py \
+          bazel run //tools:build -- \
             --llvm-version "${{ steps.version.outputs.llvm_version }}" \
             --version "${{ steps.version.outputs.version }}" \
-            --versions-dir redist-repo/versions \
-            --output-dir . \
-            --metadata-dir metadata
+            --versions-dir=versions \
+            --output-dir=. \
+            --metadata-dir "${{ github.workspace }}/metadata"
 
       - name: Copy per-version presubmit.yml
         run: |
@@ -77,7 +82,7 @@ jobs:
         with:
           name: release-${{ steps.version.outputs.llvm_version }}
           path: |
-            llvm-project-${{ steps.version.outputs.version }}.bzl.tar.xz
+            redist-repo/llvm-project-${{ steps.version.outputs.version }}.bzl.tar.xz
             metadata/
           retention-days: 7
 

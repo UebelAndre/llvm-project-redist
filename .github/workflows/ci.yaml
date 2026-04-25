@@ -28,8 +28,39 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
       - name: Validate patches
-        run: python3 tools/validate_patches.py versions
+        run: bazel run //tools:validate_patches -- versions
+
+      - name: Validate presubmit.yml
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            VERSIONS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'versions/' \
+              | grep -oP 'versions/\K[^/]+(?=/)' \
+              | sort -uV)
+          elif [ -n "${{ inputs.llvm_version }}" ]; then
+            VERSIONS="${{ inputs.llvm_version }}"
+          else
+            VERSIONS=$(git diff --name-only HEAD~1 -- 'versions/' \
+              | grep -oP 'versions/\K[^/]+(?=/)' \
+              | sort -uV)
+          fi
+          if [ -z "$VERSIONS" ]; then
+            echo "No version directories changed; skipping presubmit validation"
+            exit 0
+          fi
+          while IFS= read -r V; do
+            [ -z "$V" ] && continue
+            P="versions/${V}/presubmit.yml"
+            if [ ! -f "$P" ]; then
+              echo "ERROR: missing required $P"
+              exit 1
+            fi
+            bazel run //tools:run_presubmit -- --validate --presubmit "$P"
+          done <<< "$VERSIONS"
 
       - name: Build matrix
         id: matrix
@@ -88,14 +119,18 @@ jobs:
         with:
           path: redist-repo
 
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
       - name: Build redistribution artifact
         id: build
+        working-directory: redist-repo
         run: |
-          python3 redist-repo/tools/build.py \
+          bazel run //tools:build -- \
             --llvm-version "${{ matrix.llvm_version }}" \
             --version "${{ matrix.version }}" \
-            --versions-dir redist-repo/versions \
-            --output-dir .
+            --versions-dir=versions \
+            --output-dir=.
 
       - name: Copy per-version presubmit.yml
         run: |
@@ -113,11 +148,48 @@ jobs:
         with:
           name: release-${{ matrix.llvm_version }}
           path: |
-            llvm-project-${{ matrix.version }}.bzl.tar.xz
+            redist-repo/llvm-project-${{ matrix.version }}.bzl.tar.xz
           retention-days: 7
 
+  test:
+    needs: [setup, build]
+    if: needs.setup.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: redist-repo
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ matrix.llvm_version }}
+
+      - name: Extract artifact
+        run: tar -xJf "llvm-project-${{ matrix.version }}.bzl.tar.xz"
+
+      - name: Run presubmit (linux tasks)
+        working-directory: redist-repo
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/llvm-project-${{ matrix.version }}.bzl
+        run: |
+          set -euo pipefail
+          bazel run //tools:run_presubmit -- \
+            --presubmit "versions/${{ matrix.llvm_version }}/presubmit.yml" \
+            --run-host \
+            --source-dir "${SOURCE_DIR}"
+
   dispatch:
-    needs: build
+    needs: [build, test]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:

@@ -1,11 +1,13 @@
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-# Placeholder: overwritten by the release workflow with a transformed version
-# of the upstream llvm-project-overlay MODULE.bazel (pins retained, @llvm-raw
-# redirection removed). See tools/transform_module_bazel.py.
+"""llvm-project-redist"""
 
 module(name = "llvm-project")
 
 bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
+bazel_dep(name = "rules_req_compile", version = "1.1.0", dev_dependency = True)
+
+requirements = use_extension("@rules_req_compile//extensions:python.bzl", "requirements", dev_dependency = True)
+requirements.parse(
+    name = "pip_deps",
+    requirements_lock = "//tools:requirements.txt",
+)
+use_repo(requirements, "pip_deps")
