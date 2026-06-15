@@ -95,6 +95,29 @@ _UPSTREAM_COMMENT_RE = re.compile(
 _FROM_HEADER_RE = re.compile(r"^From ([0-9a-f]{40})\b", re.IGNORECASE | re.MULTILINE)
 _DIFF_GIT_RE = re.compile(r"^diff --git a/(\S+) b/(\S+)$", re.MULTILINE)
 
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPTS_DIR.parent
+
+
+def _workspace_root() -> Path:
+    """Return the source tree this invocation should read from and write to.
+
+    ``bazel run`` execs the script out of the runfiles tree, so
+    ``Path(__file__).parent.parent`` resolves to the runfiles ``_main``
+    directory rather than the checkout — and ``versions/<v>/`` isn't a
+    ``data`` dep of this target, so it isn't there at all. Everything this
+    tool touches lives in the checkout: it reads ``versions/<v>/patches/``,
+    writes new patches back to it, and materializes source trees under
+    ``build/``. ``BUILD_WORKSPACE_DIRECTORY`` — set by ``bazel run`` to the
+    workspace root — is the right anchor for all of them. Fall back to the
+    ``__file__``-relative root so running the script directly still works.
+    Mirrors ``render_presubmit._workspace_root``.
+    """
+    env = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    if env:
+        return Path(env)
+    return _REPO_ROOT
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -123,7 +146,7 @@ def parse_args() -> argparse.Namespace:
     add_common(pick)
     pick.add_argument(
         "--description",
-        help="Patch description used in the filename slug (default: derived from commit subject)",
+        help="Patch description used in the filename slug; slugified (default: derived from commit subject)",
     )
     pick.add_argument(
         "--no-apply",
@@ -181,6 +204,16 @@ def extract_sha(commit_or_url: str) -> str:
     return m.group(1).lower()
 
 
+def canonical_sha(patch: str, fallback: str) -> str:
+    """Return the full 40-char SHA from *patch*'s `From <sha>` line, else *fallback*.
+
+    `pick` accepts abbreviated SHAs, but the `# Upstream-Commit:` header should
+    always carry the full one so the recorded link is unambiguous.
+    """
+    m = _FROM_HEADER_RE.search(patch)
+    return m.group(1).lower() if m else fallback
+
+
 def fetch_patch(sha: str) -> str:
     """Download the git-format patch for *sha* from llvm/llvm-project."""
     url = PATCH_URL_TEMPLATE.format(sha=sha)
@@ -219,13 +252,23 @@ def next_patch_number(patches_dir: Path) -> int:
     return (max(nums) + 1) if nums else 1
 
 
+def slugify(text: str) -> str:
+    """Reduce *text* to the snake_case form used in patch filenames.
+
+    Applied to ``--description`` as well as to derived subjects: a
+    hand-written description is prose, and pasting it into a filename
+    verbatim yields names with spaces and punctuation that the rest of the
+    tooling (and `patch`'s sorted-order contract) reads poorly.
+    """
+    return _SLUG_RE.sub("_", text.lower()).strip("_")[:50] or "cherry_pick"
+
+
 def derive_description(patch: str) -> str:
     """Derive a snake_case slug from the patch's Subject: line."""
     m = _SUBJECT_RE.search(patch)
     subject = m.group(1) if m else "cherry_pick"
     subject = _BAZEL_PREFIX_RE.sub("", subject)
-    slug = _SLUG_RE.sub("_", subject.lower()).strip("_")
-    return slug[:50] or "cherry_pick"
+    return slugify(subject)
 
 
 def stamp_upstream_header(patch_body: str, sha: str) -> str:
@@ -462,6 +505,7 @@ def cmd_pick(args: argparse.Namespace, repo_root: Path) -> None:
     sha = extract_sha(args.commit)
     logging.info("Fetching %s", PATCH_URL_TEMPLATE.format(sha=sha))
     raw = fetch_patch(sha)
+    sha = canonical_sha(raw, sha)
 
     if OVERLAY_PREFIX not in raw:
         if not args.allow_non_overlay:
@@ -475,7 +519,7 @@ def cmd_pick(args: argparse.Namespace, repo_root: Path) -> None:
         )
 
     rewritten = rewrite_paths(raw)
-    description = args.description or derive_description(raw)
+    description = slugify(args.description) if args.description else derive_description(raw)
     patches_dir = version_dir / "patches"
     nnn = next_patch_number(patches_dir)
     target = patches_dir / f"{nnn:03d}_{description}.patch"
@@ -586,7 +630,7 @@ def cmd_discover(args: argparse.Namespace, repo_root: Path) -> None:
 def main() -> None:
     std_logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=std_logging.INFO)
     args = parse_args()
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = _workspace_root()
 
     if args.command == "prepare":
         cmd_prepare(args, repo_root)
