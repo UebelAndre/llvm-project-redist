@@ -2,17 +2,22 @@
 """Tests for scripts/build.py."""
 
 import hashlib
+import os
 import shutil
 import tarfile
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
+from tools import build
 from tools.build import (
     BOLT_SUPPORTED,
     LLVM_TARGETS,
     _make_deterministic,
+    _workspace_root,
     apply_overlay,
+    apply_patches,
     compute_sha256,
     create_archive,
     extract_cmake_var,
@@ -346,6 +351,47 @@ class GenerateVarsBzlTest(unittest.TestCase):
         generate_vars_bzl(self.src)
         content = (self.src / "vars.bzl").read_text()
         self.assertIn('LLVM_VERSION_MAJOR = "16"', content)
+
+
+class WorkspaceRootTest(unittest.TestCase):
+    """``--versions-dir`` / ``--output-dir`` default to the checkout, not runfiles.
+
+    ``versions/`` is not a ``data`` dep of ``//tools:build``, so anchoring
+    the defaults at ``__file__`` puts the patch directory inside the
+    runfiles tree, where it does not exist -- the build then produces a
+    silently unpatched source tree, in a temp directory that
+    ``render_presubmit`` cannot read the prepared ``.bazelrc`` from.
+    """
+
+    def test_prefers_bazel_workspace_directory(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {"BUILD_WORKSPACE_DIRECTORY": str(Path("x") / "checkout")}):
+            self.assertEqual(_workspace_root(), Path("x") / "checkout")
+
+    def test_falls_back_to_file_relative_root(self) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "BUILD_WORKSPACE_DIRECTORY"}
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(_workspace_root(), Path(build.__file__).resolve().parent.parent)
+
+
+class ApplyPatchesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmpdir = Path(tempfile.mkdtemp())
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmpdir)
+
+    def test_missing_patch_dir_warns(self) -> None:
+        """A mis-anchored patch directory looks exactly like a version with no patches."""
+        with self.assertLogs("tools.build", level="WARNING") as logs:
+            self.assertEqual(apply_patches(self.tmpdir, self.tmpdir / "nope"), 0)
+        self.assertIn("applying none", "\n".join(logs.output))
+
+    def test_empty_patch_dir_warns(self) -> None:
+        patch_dir = self.tmpdir / "patches"
+        patch_dir.mkdir()
+        with self.assertLogs("tools.build", level="WARNING") as logs:
+            self.assertEqual(apply_patches(self.tmpdir, patch_dir), 0)
+        self.assertIn("applying none", "\n".join(logs.output))
 
 
 if __name__ == "__main__":

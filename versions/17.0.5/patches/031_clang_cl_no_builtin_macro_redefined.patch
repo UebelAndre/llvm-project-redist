@@ -1,0 +1,34 @@
+diff --git a/.bazelrc b/.bazelrc
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -223,6 +223,30 @@ build:clang-cl --repo_env=USE_CLANG_CL=1
+ build:clang-cl --copt=/clang:-Wall --host_copt=/clang:-Wall
+ build:clang-cl --copt=/clang:-Werror --host_copt=/clang:-Werror
+ 
++# Bazel's own toolchain redefines __DATE__/__TIME__/__TIMESTAMP__ to make
++# compilation reproducible, and clang diagnoses that under
++# -Wbuiltin-macro-redefined -- which the -Werror above turns fatal, failing
++# every single CppCompile action:
++#   <command line>(35,9): error: redefining builtin macro
++#                         [-Werror,-Wbuiltin-macro-redefined]
++#      35 | #define __DATE__ "redacted"
++#
++# The toolchain already knows to suppress this, but only for a compiler it
++# recognises as clang. In Bazel 7's vendored copy the determinism feature is
++#   flags = [
++#       "-D__DATE__=\"redacted\"", "-D__TIMESTAMP__=\"redacted\"",
++#       "-D__TIME__=\"redacted\"",
++#   ] + (["-Wno-builtin-macro-redefined"] if ctx.attr.compiler == "clang-cl" else [])
++# (tools/cpp/windows_cc_toolchain_config.bzl). There, USE_CLANG_CL=1 swaps
++# the tools but leaves the config reporting compiler = "msvc-cl" -- the
++# version-dependent identity noted on --repo_env=USE_CLANG_CL=1 above -- so
++# the -D flags are emitted and the suppression is not.
++#
++# Pass it ourselves. Harmless on Bazel 8+, where the toolchain config comes
++# from rules_cc instead and its determinism feature is just /Brepro, so there
++# is nothing to suppress.
++build:clang-cl --copt=/clang:-Wno-builtin-macro-redefined --host_copt=/clang:-Wno-builtin-macro-redefined
++
+ # This doesn't appear to be enforced by any upstream bot.
+ build:clang-cl --copt=/clang:-Wno-unused --host_copt=/clang:-Wno-unused
+ 

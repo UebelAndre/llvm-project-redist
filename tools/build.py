@@ -45,6 +45,27 @@ sys.path.insert(0, str(_SCRIPTS_DIR.parent))
 from tools.transform_extensions_bzl import transform as _transform_extensions_source
 from tools.transform_module_bazel import transform as _transform_module_source
 
+
+def _workspace_root() -> Path:
+    """Return the source tree the `--versions-dir` / `--output-dir` defaults anchor to.
+
+    ``bazel run`` execs the script out of the runfiles tree, so
+    ``Path(__file__).parent.parent`` resolves to the runfiles ``_main``
+    directory rather than the checkout. ``versions/`` is not a ``data`` dep
+    of this binary, so under that anchor the patch directory simply does not
+    exist and ``apply_patches`` returns 0 without applying anything --
+    producing a silently unpatched tree, in a temp directory that
+    ``render_presubmit`` then cannot find. ``BUILD_WORKSPACE_DIRECTORY`` --
+    set by ``bazel run`` to the workspace root -- is the right anchor. Fall
+    back to the ``__file__``-relative root so running the script directly
+    still works. Mirrors ``render_presubmit._workspace_root``.
+    """
+    env = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    if env:
+        return Path(env)
+    return _SCRIPTS_DIR.parent
+
+
 UPSTREAM_URL_TEMPLATE = (
     "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/llvm-project-{version}.src.tar.xz"
 )
@@ -259,12 +280,19 @@ def apply_patches(src_dir: Path, patch_dir: Path) -> int:
     """Apply all ``*.patch`` files from *patch_dir* to *src_dir*.
 
     Returns the number of patches applied.
+
+    A version with no patches is legitimate, so an empty or absent directory
+    is not an error -- but it is also what a mis-anchored ``--versions-dir``
+    looks like, and an unpatched tree is not obviously wrong until something
+    fails much later. Say so either way.
     """
     if not patch_dir.is_dir():
+        logging.warning("No patch directory at %s, applying none", patch_dir)
         return 0
 
     patches = sorted(patch_dir.glob("*.patch"))
     if not patches:
+        logging.warning("No *.patch files in %s, applying none", patch_dir)
         return 0
 
     logging.info("Applying %d patch(es)", len(patches))
@@ -274,13 +302,30 @@ def apply_patches(src_dir: Path, patch_dir: Path) -> int:
     return len(patches)
 
 
+# rules_cc must be floored at 0.2.25. Earlier releases cannot configure a
+# clang-cl toolchain at all: the `USE_CLANG_CL=1` branch of `_get_msvc_vars`
+# in cc/private/toolchain/windows_cc_configure.bzl populates only CL/ML/LINK/
+# LIB, while the `msvc_vars` dict it then builds reads `build_tools["DUMPBIN"]`
+# unconditionally, so fetching @local_config_cc dies with
+#   Error: key "DUMPBIN" not found in dictionary
+# and every C/C++ target fails to analyze. Verified broken in 0.2.13, 0.2.17
+# and 0.2.22; fixed in 0.2.25, which adds
+#   build_tools["DUMPBIN"] = find_msvc_tool(repository_ctx, vc_path, "dumpbin.exe", target_arch)
+# See docs/rules_cc-use-clang-cl-dumpbin-keyerror.md. Since these versions are
+# only a floor under MVS, a consumer can still resolve something newer, but
+# nothing older -- which is what the run_tests_windows_clang_cl task needs.
+#
+# apple_support and bazel_skylib are floored at what rules_cc 0.2.25 already
+# drags in transitively (apple_support via protobuf/re2/rules_apple). MVS
+# resolves those versions either way; declaring them keeps
+# --check_direct_dependencies quiet instead of warning on every invocation.
 _BASELINE_MODULE_BAZEL = """\
 module(name = "llvm-project", version = "{version}")
 
-bazel_dep(name = "apple_support", version = "1.24.1", repo_name = "build_bazel_apple_support")
-bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "apple_support", version = "2.8.0", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "rules_cc", version = "0.2.11")
+bazel_dep(name = "rules_cc", version = "0.2.25")
 bazel_dep(name = "rules_python", version = "1.9.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 """
@@ -571,7 +616,7 @@ def main() -> None:
     std_logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=std_logging.INFO)
     args = parse_args()
 
-    repo_root = _SCRIPTS_DIR.parent
+    repo_root = _workspace_root()
     versions_dir = args.versions_dir or repo_root / "versions"
     output_dir = args.output_dir or repo_root / "build" / args.llvm_version
 

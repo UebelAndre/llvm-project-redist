@@ -14,6 +14,7 @@ from tools.cherry_pick import (
     picked_shas,
     rewrite_paths,
     sha_already_picked,
+    slugify,
     stamp_upstream_header,
 )
 
@@ -128,6 +129,30 @@ class DeriveDescriptionTest(unittest.TestCase):
     def test_keeps_bazel_in_middle_of_subject(self) -> None:
         patch = "Subject: Add new bazel rules for foo\n"
         self.assertEqual(derive_description(patch), "add_new_bazel_rules_for_foo")
+
+
+class SlugifyTest(unittest.TestCase):
+    """``--description`` is prose; the filename it lands in is not.
+
+    Patches are applied in sorted filename order, so the names are part of
+    the contract. A description passed through verbatim produced
+    ``035_leb128 test signed integer overflow.patch``.
+    """
+
+    def test_spaces_become_underscores(self) -> None:
+        self.assertEqual(slugify("leb128 test signed integer overflow"), "leb128_test_signed_integer_overflow")
+
+    def test_punctuation_is_collapsed(self) -> None:
+        self.assertEqual(slugify("[bazel] Fix: the/build!"), "bazel_fix_the_build")
+
+    def test_already_a_slug_is_unchanged(self) -> None:
+        self.assertEqual(slugify("fix_the_build"), "fix_the_build")
+
+    def test_truncates_to_fifty_characters(self) -> None:
+        self.assertLessEqual(len(slugify("word " * 40)), 50)
+
+    def test_empty_falls_back(self) -> None:
+        self.assertEqual(slugify("!!!"), "cherry_pick")
 
 
 class StampUpstreamHeaderTest(unittest.TestCase):

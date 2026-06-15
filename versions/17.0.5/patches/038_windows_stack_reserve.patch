@@ -1,0 +1,30 @@
+diff --git a/.bazelrc b/.bazelrc
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -145,6 +145,26 @@
+ 
+ # Use the more flexible bigobj format for C++ files that have lots of symbols.
+ build:windows --cxxopt=/bigobj --host_cxxopt=/bigobj
++
++# Reserve a ~10 MB stack. The MSVC default is 1 MB, which is not enough for
++# tasks such as parsing recursive C++ templates in Clang. clang/unittests
++# ast_tests dies on it:
++#   unknown file: error: SEH exception with code 0x3221225725 thrown in the
++#   test body.
++#   [  FAILED  ] Decl.CleansUpAPValues
++# The code is printed in decimal despite the `0x` prefix: 3221225725 is
++# 0xC00000FD, STATUS_STACK_OVERFLOW. Decl.CleansUpAPValues compiles
++# `template<int N> struct A : A<N-1> {}; ... A<50> a;`, and a unit test drives
++# Sema on the main thread rather than on one of the large stacks that
++# llvm::CrashRecoveryContext gives the driver, so the linked reserve is all it
++# gets.
++#
++# CMake has set this ever since CMake 2.8.11 stopped doing it implicitly
++# (llvm/cmake/modules/HandleLLVMOptions.cmake:454-460), under `if(MSVC)`,
++# which covers clang-cl too -- hence `windows` rather than `msvc`. link.exe
++# and lld-link both accept /STACK. This is plain CMake parity that the Bazel
++# overlay never carried.
++build:windows --linkopt=/STACK:10000000 --host_linkopt=/STACK:10000000
+ 
+ ###############################################################################
+ # Windows specific flags for building with MSVC.

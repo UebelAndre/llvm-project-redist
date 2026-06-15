@@ -1,0 +1,23 @@
+diff --git a/.bazelrc b/.bazelrc
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -257,6 +257,19 @@ build:clang-cl --copt=/clang:-Wno-unused-const-variable --host_copt=/clang:-Wno-
+ build:clang-cl --copt=/clang:-Wno-inconsistent-dllimport --host_copt=/clang:-Wno-inconsistent-dllimport
+ build:clang-cl --cxxopt=/clang:-Wno-c++11-narrowing --host_cxxopt=/clang:-Wno-c++11-narrowing
+ 
++# `#include "Targets.h"` in clang/lib/Basic/Targets/*.h, and `#include
++# "RISCV.h"` in llvm/lib/Target/RISCV/MCTargetDesc/*.h, name headers that sit
++# in the *parent* source directory. CMake puts those directories on the
++# include path, so there the includes resolve the ordinary way. Bazel does
++# not, and the only thing that finds them is MSVC's rule of searching the
++# directory of every file on the include stack -- which clang-cl implements,
++# and diagnoses:
++#   OSTargets.h(15,10): error: #include resolved using non-portable Microsoft
++#   search rules as: .../clang/lib/Basic\Targets.h [-Wmicrosoft-include]
++# The headers it finds are the intended ones, so this is a complaint about
++# include-path plumbing rather than about the code. Three files hit it.
++build:clang-cl --copt=/clang:-Wno-microsoft-include --host_copt=/clang:-Wno-microsoft-include
++
+ ###############################################################################
+ # Options for continuous integration.
+ ###############################################################################

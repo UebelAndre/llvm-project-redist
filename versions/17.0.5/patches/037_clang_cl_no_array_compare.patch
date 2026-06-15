@@ -1,0 +1,39 @@
+diff --git a/.bazelrc b/.bazelrc
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -270,6 +270,35 @@
+ # include-path plumbing rather than about the code. Three files hit it.
+ build:clang-cl --copt=/clang:-Wno-microsoft-include --host_copt=/clang:-Wno-microsoft-include
+ 
++# mlir-tblgen's generated `Properties::operator==` compares members with
++# `rhs.prop == this->prop`. At 17.0.5 an `ArrayProperty<"int64_t", N>` lowers
++# to a raw C array -- `using propTy = int64_t[3];` -- so for those members that
++# is an address comparison between two distinct objects, which is constantly
++# false:
++#   TestOps.h.inc(40021,18): error: comparison between two arrays compare
++#   their addresses and will be deprecated in c++20; to compare array
++#   addresses, use unary '+' to decay operands to pointers [-Warray-compare]
++#     40021 |         rhs.prop == this->prop &&
++#           |         ~~~~~~~~ ^  ~~~~~~~~~~
++# The diagnostic is right and the generated code is wrong, but neither fact is
++# actionable here:
++#
++#   * -Warray-compare postdates this release. Clang gained it in
++#     https://github.com/llvm/llvm-project/commit/7347e5e89a67 (2024-12-04,
++#     Clang 20), so 17.0.5's own clang never emits it and the failure only
++#     appears when a newer clang-cl compiles the tree -- which is exactly what
++#     the CI agent has.
++#   * There is no targeted upstream fix to cherry-pick. tblgen at 17 exposes
++#     no comparator hook for properties; upstream only stopped emitting this
++#     by reworking properties wholesale in
++#     https://github.com/llvm/llvm-project/commit/8955e285e1ac (2024-07-26),
++#     which is far too large to backport onto a point release.
++#
++# The affected declarations are confined to mlir/test/lib/Dialect/Test, MLIR's
++# in-tree test dialect, so nothing shipped depends on the broken comparison --
++# but 64 compile actions include the generated header and fail to build.
++build:clang-cl --copt=/clang:-Wno-array-compare --host_copt=/clang:-Wno-array-compare
++
+ ###############################################################################
+ # Options for continuous integration.
+ ###############################################################################
