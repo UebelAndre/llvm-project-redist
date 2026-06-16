@@ -98,6 +98,20 @@ py_binary(
 )
 
 py_binary(
+    name = "render_presubmit",
+    srcs = ["render_presubmit.py"],
+    deps = [
+        "@llvm_project_redist_pip//pyyaml",
+    ],
+)
+
+py_test(
+    name = "render_presubmit_test",
+    srcs = ["render_presubmit_test.py"],
+    deps = [":render_presubmit"],
+)
+
+py_binary(
     name = "cherry_pick",
     srcs = ["cherry_pick.py"],
     deps = [":build"],
