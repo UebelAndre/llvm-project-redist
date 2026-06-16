@@ -224,7 +224,7 @@ def extract_tarball(tarball: Path, dest_dir: Path) -> Path:
 
 
 def apply_overlay(src_dir: Path) -> None:
-    """Copy the Bazel overlay files into the source root, then drop ``utils/``.
+    """Copy the Bazel overlay files into the source root, then drop ``utils/bazel/``.
 
     After the overlay copy, ``utils/bazel/llvm-project-overlay/`` is a 1.4 MB
     duplicate of files now living at the source root, and its BUILD files
@@ -232,9 +232,9 @@ def apply_overlay(src_dir: Path) -> None:
     project's patches replace at the source root. Leaving it in the published
     tarball means ``bazel //...`` consumers would silently see broken targets
     if they (or a future upstream regression) lost the ``.bazelignore`` that
-    masks ``utils/bazel``. The cheap and correct fix is to delete ``utils/``
-    entirely once the overlay has been applied — nothing under it is
-    referenced by any build target at the source root.
+    masks ``utils/bazel``. So delete just ``utils/bazel/`` once the overlay has
+    been applied — the rest of ``utils/`` (notably ``utils/lit/``, the Python
+    package the ``//llvm:lit`` py_binary depends on) must stay.
     """
     logging.info("Applying Bazel overlay")
     overlay = src_dir / "utils" / "bazel" / "llvm-project-overlay"
@@ -250,10 +250,9 @@ def apply_overlay(src_dir: Path) -> None:
         if src_file.is_file():
             shutil.copy2(src_file, src_dir / name)
 
-    utils_dir = src_dir / "utils"
-    if utils_dir.is_dir():
-        logging.info("Removing %s (overlay sources are now at the source root)", utils_dir)
-        shutil.rmtree(utils_dir)
+    if bazel_utils.is_dir():
+        logging.info("Removing %s (overlay sources are now at the source root)", bazel_utils)
+        shutil.rmtree(bazel_utils)
 
 
 def apply_patches(src_dir: Path, patch_dir: Path) -> int:

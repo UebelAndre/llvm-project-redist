@@ -109,20 +109,21 @@ class ApplyOverlayTest(unittest.TestCase):
     def test_missing_overlay_is_warning(self) -> None:
         apply_overlay(self.src)
 
-    def test_removes_utils_after_overlay(self) -> None:
+    def test_removes_utils_bazel_after_overlay(self) -> None:
         overlay = self.src / "utils" / "bazel" / "llvm-project-overlay"
         overlay.mkdir(parents=True)
         (overlay / "llvm").mkdir()
         (overlay / "llvm" / "BUILD.bazel").write_text("# overlay llvm build")
-        # Sibling content under utils/ that has nothing to do with the overlay
-        # — e.g. utils/arcanist/clang-format.sh — should also be removed, since
-        # the published tarball treats the entire utils/ tree as dead code.
+        # utils/bazel is the overlay-duplicate and must go. Siblings under
+        # utils/ (e.g. utils/arcanist) must stay — and the published tarball
+        # still needs llvm/utils/lit/ for the //llvm:lit py_binary.
         (self.src / "utils" / "arcanist").mkdir(parents=True)
         (self.src / "utils" / "arcanist" / "clang-format.sh").write_text("#!/bin/sh\n")
 
         apply_overlay(self.src)
 
-        self.assertFalse((self.src / "utils").exists())
+        self.assertFalse((self.src / "utils" / "bazel").exists())
+        self.assertTrue((self.src / "utils" / "arcanist").exists())
         self.assertTrue((self.src / "llvm" / "BUILD.bazel").is_file())
 
     def test_missing_overlay_leaves_utils_alone(self) -> None:
