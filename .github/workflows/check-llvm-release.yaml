@@ -104,24 +104,20 @@ jobs:
           fi
 
           if [ ! -f "${VERSION_DIR}/presubmit.yml" ]; then
-            # Find the closest existing version's presubmit.yml
-            CLOSEST=$(ls -d versions/*/presubmit.yml 2>/dev/null \
-              | sed 's|versions/||;s|/presubmit.yml||' \
-              | sort -V \
-              | awk -v target="$LLVM_VERSION" '{
-                  if ($0 <= target) below=$0
-                  else if (!above) above=$0
-                }
-                END {
-                  if (below) print below; else if (above) print above
-                }')
+            # Render presubmit.yml from upstream's .bazelrc for this LLVM tag.
+            # The renderer expands `--config=X` references inline so the result
+            # is self-contained (bazelci's synthetic test workspace has no
+            # .bazelrc of its own). Downloading just the .bazelrc avoids
+            # extracting the full source tarball at seed time.
+            BAZELRC_URL="https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-${LLVM_VERSION}/utils/bazel/.bazelrc"
+            curl -fsSL "${BAZELRC_URL}" -o /tmp/upstream-bazelrc
+            echo "Fetched upstream .bazelrc from llvmorg-${LLVM_VERSION}"
 
-            if [ -z "$CLOSEST" ]; then
-              echo "ERROR: no existing version with presubmit.yml found, cannot create PR"
-              exit 1
-            fi
-            cp "versions/${CLOSEST}/presubmit.yml" "${VERSION_DIR}/presubmit.yml"
-            echo "Copied presubmit.yml from ${CLOSEST}"
+            bazel run //tools:render_presubmit -- \
+              --llvm-version "${LLVM_VERSION}" \
+              --bazelrc /tmp/upstream-bazelrc \
+              --output "${VERSION_DIR}/presubmit.yml"
+            echo "Rendered ${VERSION_DIR}/presubmit.yml"
           fi
 
       - name: Create PR
