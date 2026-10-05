@@ -17,7 +17,7 @@ from typing import Any
 _DEFAULT_WORKSPACE = (
     Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", ""))
     if os.environ.get("BUILD_WORKSPACE_DIRECTORY")
-    else Path(__file__).resolve().parent.parent
+    else Path(__file__).absolute().parent.parent
 )
 
 

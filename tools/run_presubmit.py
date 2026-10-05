@@ -188,7 +188,7 @@ def cmd_pipeline(
     repo_root = _repo_root()
     rel_versions = versions_dir
     if not rel_versions.is_absolute():
-        rel_versions = (repo_root / rel_versions).resolve()
+        rel_versions = repo_root / rel_versions
 
     bazelci_mod = _load_bazelci()
 

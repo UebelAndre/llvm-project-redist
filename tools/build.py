@@ -29,6 +29,7 @@ import lzma
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -39,11 +40,32 @@ logging = std_logging.getLogger(__name__)
 
 import zstandard as zstd
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = Path(__file__).absolute().parent
 sys.path.insert(0, str(_SCRIPTS_DIR.parent))
 
 from tools.transform_extensions_bzl import transform as _transform_extensions_source
 from tools.transform_module_bazel import transform as _transform_module_source
+
+
+def _workspace_root() -> Path:
+    """Return the source tree the `--versions-dir` / `--output-dir` defaults anchor to.
+
+    ``bazel run`` execs the script out of the runfiles tree, so
+    ``Path(__file__).parent.parent`` resolves to the runfiles ``_main``
+    directory rather than the checkout. ``versions/`` is not a ``data`` dep
+    of this binary, so under that anchor the patch directory simply does not
+    exist and ``apply_patches`` returns 0 without applying anything --
+    producing a silently unpatched tree, in a temp directory that
+    ``render_presubmit`` then cannot find. ``BUILD_WORKSPACE_DIRECTORY`` --
+    set by ``bazel run`` to the workspace root -- is the right anchor. Fall
+    back to the ``__file__``-relative root so running the script directly
+    still works. Mirrors ``render_presubmit._workspace_root``.
+    """
+    env = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    if env:
+        return Path(env)
+    return _SCRIPTS_DIR.parent
+
 
 UPSTREAM_URL_TEMPLATE = (
     "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/llvm-project-{version}.src.tar.xz"
@@ -208,6 +230,25 @@ def download_signing_key(dest_dir: Path) -> Path:
     return key
 
 
+def _rmtree(path: Path) -> None:
+    """``shutil.rmtree`` that also removes read-only files.
+
+    ``cherry_pick.py`` initializes a git baseline inside the prepared tree,
+    and git marks its pack files read-only. On Windows ``os.unlink`` refuses
+    those with ``PermissionError``, which would otherwise abort replacing a
+    previously prepared tree with a fresh one.
+    """
+
+    def _clear_readonly(func, p, _exc):  # type: ignore[no-untyped-def]
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_clear_readonly)
+    else:
+        shutil.rmtree(path, onerror=_clear_readonly)
+
+
 def extract_tarball(tarball: Path, dest_dir: Path) -> Path:
     """Extract a ``.tar.xz`` archive and return the top-level directory."""
     logging.info("Extracting %s", tarball.name)
@@ -215,7 +256,7 @@ def extract_tarball(tarball: Path, dest_dir: Path) -> Path:
         top_level = tar.getnames()[0].split("/")[0]
         target = dest_dir / top_level
         if target.exists():
-            shutil.rmtree(target)
+            _rmtree(target)
         if sys.version_info >= (3, 12):
             tar.extractall(path=dest_dir, filter="data")
         else:
@@ -252,25 +293,32 @@ def apply_overlay(src_dir: Path) -> None:
 
     if bazel_utils.is_dir():
         logging.info("Removing %s (overlay sources are now at the source root)", bazel_utils)
-        shutil.rmtree(bazel_utils)
+        _rmtree(bazel_utils)
 
 
 def apply_patches(src_dir: Path, patch_dir: Path) -> int:
     """Apply all ``*.patch`` files from *patch_dir* to *src_dir*.
 
     Returns the number of patches applied.
+
+    A version with no patches is legitimate, so an empty or absent directory
+    is not an error -- but it is also what a mis-anchored ``--versions-dir``
+    looks like, and an unpatched tree is not obviously wrong until something
+    fails much later. Say so either way.
     """
     if not patch_dir.is_dir():
+        logging.warning("No patch directory at %s, applying none", patch_dir)
         return 0
 
     patches = sorted(patch_dir.glob("*.patch"))
     if not patches:
+        logging.warning("No *.patch files in %s, applying none", patch_dir)
         return 0
 
     logging.info("Applying %d patch(es)", len(patches))
     for p in patches:
         logging.info("  %s", p.name)
-        run(["patch", "-p1", "-d", str(src_dir), "-i", str(p.resolve())])
+        run(["patch", "-p1", "-d", str(src_dir), "-i", str(p.absolute())])
     return len(patches)
 
 
@@ -471,7 +519,7 @@ def prepare_source(
     final_name = f"llvm-project-{version}.bzl"
     final_dir = output_dir / final_name
     if final_dir.exists() and final_dir != src_dir:
-        shutil.rmtree(final_dir)
+        _rmtree(final_dir)
     src_dir.rename(final_dir)
 
     return final_dir, upstream_sha256
@@ -571,7 +619,7 @@ def main() -> None:
     std_logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=std_logging.INFO)
     args = parse_args()
 
-    repo_root = _SCRIPTS_DIR.parent
+    repo_root = _workspace_root()
     versions_dir = args.versions_dir or repo_root / "versions"
     output_dir = args.output_dir or repo_root / "build" / args.llvm_version
 

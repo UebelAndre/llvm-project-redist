@@ -20,7 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = Path(__file__).absolute().parent
 _REPO_ROOT = _SCRIPTS_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -139,7 +139,7 @@ def _create_anonymous_repo(test_ws: Path, source_dir: Path, version: str) -> Non
     test_ws.mkdir(exist_ok=True, parents=True)
     (test_ws / "WORKSPACE").touch()
     (test_ws / "BUILD").touch()
-    rel_source = os.path.relpath(source_dir, test_ws)
+    rel_source = Path(os.path.relpath(source_dir, test_ws)).as_posix()
     (test_ws / "MODULE.bazel").write_text(
         f'bazel_dep(name = "llvm-project", version = "{version}")\n'
         f"local_path_override(\n"
@@ -237,10 +237,22 @@ def cmd_local(llvm_version: str, workspace: Path) -> int:
         return 1
 
     version = read_version_string(llvm_version, str(versions_dir))
-    source_dir = workspace / f"llvm-project-{version}.bzl"
+    # Prepare under build/<llvm_version>/, where `cherry_pick prepare` also
+    # puts it and which .bazelignore already excludes. A prepared LLVM tree at
+    # the repo root is a Bazel package tree of its own, and `bazel test //...`
+    # here would try to load it.
+    build_dir = workspace / "build" / llvm_version
+    source_dir = build_dir / f"llvm-project-{version}.bzl"
     test_ws = workspace / "temp_test_repos" / "llvm-project" / llvm_version / "anonymous_module"
 
     # Prepare source
+    #
+    # build.py runs as a bare script rather than through its py_binary
+    # bootstrap, so it does not inherit this process's in-memory sys.path.
+    # Export it as PYTHONPATH so build.py's own deps (zstandard) resolve.
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+
     logging.info("Preparing source for LLVM %s...", llvm_version)
     subprocess.run(
         [
@@ -249,10 +261,11 @@ def cmd_local(llvm_version: str, workspace: Path) -> int:
             f"--llvm-version={llvm_version}",
             f"--version={version}",
             f"--versions-dir={versions_dir}",
-            f"--output-dir={workspace}",
+            f"--output-dir={build_dir}",
             "--prepare-only",
         ],
         check=True,
+        env=env,
     )
 
     # Create anonymous test workspace
