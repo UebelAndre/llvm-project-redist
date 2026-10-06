@@ -30,8 +30,10 @@ versions/
     presubmit.yml                            # BCR presubmit test config
     patches/
       001_fix_build.patch                    # git-formatted patches, applied in order
+tools/
+  presubmit.template.yml                     # rendered into versions/*/presubmit.yml
 .bcr/
-  presubmit.yml                              # template for new versions
+  presubmit.yml                              # presubmit of the version being released (written by release.yaml)
   source.template.json                       # BCR source.json template
   metadata.template.json                     # BCR metadata.json template
 ```

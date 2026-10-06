@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
-"""Render a version's presubmit.yml with bazelrc named-configs expanded inline.
+"""Render a version's presubmit.yml from ``tools/presubmit.template.yml``.
 
-The published llvm-project tarball ships a ``.bazelrc`` at its source root
-(copied from upstream's ``utils/bazel/.bazelrc`` during the overlay step).
-That file defines named configs like ``generic_clang``, ``clang-cl``, ``ci``,
-etc. But the synthetic test workspace ``tools/run_presubmit.py`` creates for
-bazelci has no ``.bazelrc`` of its own — so a bare ``--config=X`` reference
-in ``versions/{X}/presubmit.yml`` would error at bazel-test time with
-"Config value 'X' is not defined in any .rc file".
+CI and bazel-central-registry run llvm-project as a *dependency* of a
+synthetic test workspace, and Bazel only reads the root module's ``.bazelrc``.
+So the named configs upstream defines there -- ``generic_clang``, ``msvc``,
+``clang-cl``, ... -- are not resolvable from a ``presubmit.yml``: a bare
+``--config=msvc`` fails with "Config value 'msvc' is not defined in any .rc
+file". The flags have to be spelled out.
 
-This tool reads a prepared source's ``.bazelrc`` and emits a presubmit.yml
-where every ``--config=X`` reference has been recursively expanded into the
-literal flags it would have selected. The result is fully self-contained:
-bazel doesn't need to find the config definition anywhere.
-
-The presubmit task structure (what platforms, what targets, what configs to
-exercise) is hard-coded below — it's the canonical shape from
-``versions/17.0.5/presubmit.yml``. Per-version variations (different
-``bazel:`` matrix, different project-invariant flags) are CLI flags.
+This tool does exactly one thing: it copies the template and replaces every
+``--config=NAME`` list entry with the flags NAME selects in the version's
+prepared (post-patch) ``.bazelrc`` -- the ``.bazelrc``'s unconditional flags
+once per flag list, then NAME flattened recursively, in ``.bazelrc`` order.
+Everything else in the template (comments, task names, matrix, literal flags)
+is copied as written, so the template is the single place that says what
+*this* CI runs, and upstream's ``.bazelrc`` is the single place that says how
+LLVM builds.
 
 Usage:
     bazel run //tools:render_presubmit -- --llvm-version 17.0.5
-    bazel run //tools:render_presubmit -- --llvm-version 17.0.5 --bazel-versions 7.x,8.x,9.x
-    bazel run //tools:render_presubmit -- --llvm-version 17.0.5 --check  # diff-only
+    bazel run //tools:render_presubmit -- --llvm-version 17.0.5 --check   # diff only
+    bazel run //tools:render_presubmit -- --llvm-version 18.1.0 --bazelrc /tmp/upstream.bazelrc
 """
 
 from __future__ import annotations
@@ -36,7 +34,6 @@ import re
 import shlex
 import sys
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -45,20 +42,17 @@ logging = std_logging.getLogger(__name__)
 _SCRIPTS_DIR = Path(__file__).absolute().parent
 _REPO_ROOT = _SCRIPTS_DIR.parent
 
+TEMPLATE_RELATIVE_PATH = Path("tools") / "presubmit.template.yml"
+
 
 def _workspace_root() -> Path:
     """Return the source tree this invocation should read from and write to.
 
-    ``bazel run`` execs the script out of the runfiles tree, so
-    ``Path(__file__).parent.parent`` resolves to the runfiles ``_main``
-    directory rather than the checkout. Nothing this tool touches is a
-    runfiles entry: ``versions/<v>/presubmit.yml`` is written back to the
-    source tree, and the prepared source it reads ``.bazelrc`` from is
-    generated at runtime by ``cherry_pick prepare`` (so it can never be a
-    build-time ``data`` dep). ``BUILD_WORKSPACE_DIRECTORY`` — set by
-    ``bazel run`` to the workspace root — is the right anchor for all of
-    them. Fall back to the ``__file__``-relative root so running the script
-    directly still works. Mirrors ``setup_presubmit._workspace_root``.
+    ``bazel run`` execs the script out of the runfiles tree, so a
+    ``__file__``-relative root would point into runfiles rather than the
+    checkout. ``BUILD_WORKSPACE_DIRECTORY`` -- set by ``bazel run`` to the
+    workspace root -- is the right anchor; fall back to the ``__file__``
+    -relative root so running the script directly still works.
     """
     env = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if env:
@@ -69,11 +63,9 @@ def _workspace_root() -> Path:
 def _user_cwd_path(s: str) -> Path:
     """Resolve a relative path against the shell's working directory.
 
-    ``bazel run`` changes the process CWD to the runfiles dir before
-    exec-ing the script, which would break relative paths the user typed on
-    the command line. Anchor them to ``BUILD_WORKING_DIRECTORY`` (set by
-    ``bazel run`` to the invoking shell's CWD), falling back to the current
-    CWD when not under bazel. Mirrors ``release_notes._user_cwd_path``.
+    ``bazel run`` changes the process CWD before exec-ing the script, which
+    would break relative paths the user typed. Anchor them to
+    ``BUILD_WORKING_DIRECTORY`` (the invoking shell's CWD) when set.
     """
     p = Path(s)
     if p.is_absolute():
@@ -82,56 +74,37 @@ def _user_cwd_path(s: str) -> Path:
     return Path(base) / p
 
 
+# ---------------------------------------------------------------------------
+# .bazelrc parsing
+# ---------------------------------------------------------------------------
+
 # Lines in .bazelrc look like:
 #   <cmd>[:<config>] <flag> [<flag> ...]
 # where <cmd> is one of: build, common, test, run, query, fetch, sync, etc.
-# We collect flags from build/common/test directives (they all propagate to
-# `bazel test` invocations).
-_RC_LINE_RE = re.compile(r"^\s*(common|build|test)(?::([A-Za-z0-9_-]+))?\s+(.+?)\s*$")
+_RC_LINE_RE = re.compile(r"^\s*(common|build|test)(?::([A-Za-z0-9_.-]+))?\s+(.+?)\s*$")
 
-# Commands whose flags we aggregate. `build` flags propagate to `test`; `common`
-# applies to every bazel command; `test` is the most-specific layer.
+# Commands whose flags reach `bazel test`: `common` applies to every command,
+# `build` flags propagate to `test`, `test` is the most specific layer.
 _AGGREGATED_COMMANDS = frozenset({"common", "build", "test"})
 
-# Project invariants — patches in versions/{X}/patches/ enforce these even
-# when upstream's .bazelrc doesn't. Always appended after expansion.
-PROJECT_INVARIANT_FLAGS: list[str] = [
-    "--incompatible_disallow_empty_glob=true",
-    "--incompatible_autoload_externally=",
-]
-
-# CI-ergonomic flags we want on every task regardless of which compiler
-# config is in play. (`-nobuildkite` is the tag-filter pair that makes
-# ``@llvm-project//...`` sustainable as a target expression.)
-COMMON_TASK_FLAGS: list[str] = [
-    "--build_tag_filters=-nobuildkite",
-    "--test_tag_filters=-nobuildkite",
-    "--keep_going",
-]
+Configs = dict[str | None, list[str]]
 
 
-def parse_bazelrc(path: Path) -> dict[str | None, list[str]]:
-    """Parse a .bazelrc into a map of config_name → list of flags.
+def parse_bazelrc(path: Path) -> Configs:
+    """Parse a .bazelrc into a map of config name -> flags, in source order.
 
-    The special key ``None`` collects unconditional flags (lines like
-    ``build --some-flag`` with no ``:config`` suffix). Named-config lines
-    (``build:generic_clang --some-flag``) are aggregated under their config
-    name. Multiple lines for the same config are concatenated in source
-    order. Backslash continuations are joined before parsing. Comment
-    lines and blank lines are ignored.
-
-    Only ``common``/``build``/``test`` directives are aggregated — ``run``
-    and ``query`` flags don't propagate to ``bazel test`` invocations.
-    Imports are NOT currently followed (none of llvm-project's bazelrc
-    uses ``import``; if it ever does, this function will need extending).
+    The key ``None`` collects unconditional flags (``build --flag`` with no
+    ``:config`` suffix). Multiple lines for one config concatenate. Backslash
+    continuations are joined first; comments and blank lines are skipped.
+    Only ``common``/``build``/``test`` directives are kept -- ``run``,
+    ``query`` etc. never reach ``bazel test``. ``import``/``try-import`` are
+    not followed; llvm-project's .bazelrc only try-imports an optional
+    user.bazelrc.
     """
     raw = path.read_text(encoding="utf-8")
-    # Join backslash-continued lines so a single logical directive ends up
-    # on one parsed line. Trailing-backslash + newline + leading whitespace
-    # collapses to a single space.
     joined = re.sub(r"\\\n[ \t]*", " ", raw)
 
-    configs: dict[str | None, list[str]] = collections.defaultdict(list)
+    configs: Configs = collections.defaultdict(list)
     for raw_line in joined.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -142,229 +115,230 @@ def parse_bazelrc(path: Path) -> dict[str | None, list[str]]:
         cmd, config_name, flags_str = m.groups()
         if cmd not in _AGGREGATED_COMMANDS:
             continue
-        # shlex.split handles quoted args with embedded spaces and (with
-        # comments=True) trims trailing `# ...` inline comments — `.bazelrc`
-        # uses these heavily (e.g. ``build:msvc --copt=/wd4141 # inline used...``).
-        flags = shlex.split(flags_str, comments=True)
-        configs[config_name].extend(flags)
+        # shlex handles quoted args and (comments=True) strips the trailing
+        # `# ...` that llvm-project's .bazelrc puts after many flags.
+        configs[config_name].extend(shlex.split(flags_str, comments=True))
     return dict(configs)
 
 
-def expand_config(
-    configs: dict[str | None, list[str]],
-    config_name: str,
-    _seen: frozenset[str] | None = None,
-) -> list[str]:
-    """Recursively expand --config=X references in a named config's flags.
-
-    Walks the flags for *config_name*. Each ``--config=Y`` flag is replaced
-    by the expanded flags of ``Y`` (transitively). Cycles raise.
-    """
-    if _seen is None:
-        _seen = frozenset()
+def expand_config(configs: Configs, config_name: str, _seen: frozenset[str] = frozenset()) -> list[str]:
+    """Flatten a named config, recursively replacing nested ``--config=Y``."""
     if config_name in _seen:
-        chain = " → ".join(list(_seen) + [config_name])
+        chain = " -> ".join([*_seen, config_name])
         raise ValueError(f"Circular --config reference: {chain}")
     if config_name not in configs:
-        raise KeyError(f"Config '{config_name}' not defined in bazelrc")
+        raise KeyError(config_name)
 
-    next_seen = _seen | {config_name}
     result: list[str] = []
     for flag in configs[config_name]:
         if flag.startswith("--config="):
-            inherited = flag[len("--config=") :]
-            result.extend(expand_config(configs, inherited, next_seen))
+            result.extend(expand_config(configs, flag[len("--config=") :], _seen | {config_name}))
         else:
             result.append(flag)
     return result
 
 
-def flags_for(configs: dict[str | None, list[str]], config_name: str) -> list[str]:
-    """Compose the full flag list a task should pass to ``bazel test``.
+# ---------------------------------------------------------------------------
+# Template expansion
+# ---------------------------------------------------------------------------
 
-    Order: unconditional bazelrc flags → expanded named-config flags →
-    common task flags → project invariant flags. (Later flags override
-    earlier ones in Bazel's command-line semantics.)
+# A flag-list key in the template: `test_flags:` / `build_flags:`.
+_FLAG_LIST_KEY_RE = re.compile(r"^(?P<indent>[ ]*)(?:test_flags|build_flags):[ ]*$")
+# A `--config=NAME` list entry, optionally quoted, optionally commented.
+_CONFIG_ITEM_RE = re.compile(
+    r"^(?P<indent>[ ]*)-[ ]+(?P<q>['\"]?)--config=(?P<name>[A-Za-z0-9_.-]+)(?P=q)[ ]*(?:#.*)?$"
+)
+# Flags that can be written as a YAML plain scalar. Everything else is
+# single-quoted. Every flag starts with `-`, which YAML only treats specially
+# when followed by a space, and the character class excludes spaces.
+_PLAIN_FLAG_RE = re.compile(r"--?[A-Za-z0-9_./:=+,%@-]*")
+
+
+def _yaml_scalar(flag: str) -> str:
+    if _PLAIN_FLAG_RE.fullmatch(flag):
+        return flag
+    return "'" + flag.replace("'", "''") + "'"
+
+
+def render_template(template: str, configs: Configs) -> str:
+    """Return *template* with every ``--config=NAME`` entry expanded.
+
+    Within each ``test_flags``/``build_flags`` list the first expansion is
+    preceded by the .bazelrc's unconditional flags -- what Bazel would have
+    applied had it read the file -- and later expansions are not, so they are
+    never repeated. Each expansion is introduced by a comment naming the
+    config it came from.
     """
-    unconditional = configs.get(None, [])
-    expanded = expand_config(configs, config_name)
-    return [*unconditional, *expanded, *COMMON_TASK_FLAGS, *PROJECT_INVARIANT_FLAGS]
+    out: list[str] = []
+    in_list = False
+    list_indent = 0
+    unconditional_emitted = False
 
+    for line in template.splitlines():
+        key = _FLAG_LIST_KEY_RE.match(line)
+        if key:
+            in_list = True
+            list_indent = len(key.group("indent"))
+            unconditional_emitted = False
+            out.append(line)
+            continue
 
-# Task structure — same shape across versions; only the .bazelrc expansion
-# and the matrix entries differ. Each entry is:
-#   (task_name, display_name, platform_expr, config_name)
-# platform_expr is either a literal platform (e.g., "windows") or the
-# matrix placeholder "${{ platform }}".
-_TASK_SPEC: list[tuple[str, str, str, str]] = [
-    ("run_tests", "bazel test //... (linux, clang)", "${{ platform }}", "generic_clang"),
-    ("run_tests_gcc", "bazel test //... (linux, gcc)", "${{ platform }}", "generic_gcc"),
-    ("run_tests_macos", "bazel test //... (macOS x86_64, clang)", "macos", "generic_clang"),
-    ("run_tests_macos_arm64", "bazel test //... (macOS arm64, clang)", "macos_arm64", "generic_clang"),
-    ("run_tests_windows_clang_cl", "bazel test //... (windows, clang-cl)", "windows", "clang-cl"),
-    ("run_tests_windows_msvc", "bazel test //... (windows, msvc)", "windows", "msvc"),
-]
+        if in_list:
+            stripped = line.lstrip(" ")
+            indent = len(line) - len(stripped)
+            is_item = stripped.startswith("- ") and indent >= list_indent
+            if stripped and not stripped.startswith("#") and not is_item:
+                in_list = False  # the list ended; fall through to copy the line
 
+        item = _CONFIG_ITEM_RE.match(line) if in_list else None
+        if not item:
+            if in_list and "--config=" in line:
+                raise ValueError(f"unrecognised --config entry in template: {line.strip()!r}")
+            out.append(line)
+            continue
 
-def render_presubmit(
-    bazelrc_path: Path,
-    linux_platforms: list[str],
-    bazel_versions: list[str],
-) -> dict[str, Any]:
-    """Build the presubmit.yml dict for a given prepared source's .bazelrc."""
-    configs = parse_bazelrc(bazelrc_path)
+        pad = item.group("indent")
+        name = item.group("name")
+        try:
+            flags = expand_config(configs, name)
+        except KeyError as e:
+            raise SystemExit(
+                f"ERROR: template references --config={e.args[0]}, which the .bazelrc does not define"
+            ) from None
+        if not unconditional_emitted:
+            unconditional = configs.get(None, [])
+            if unconditional:
+                out.append(f"{pad}# .bazelrc: unconditional flags")
+                out.extend(f"{pad}- {_yaml_scalar(f)}" for f in unconditional)
+            unconditional_emitted = True
+        out.append(f"{pad}# .bazelrc: --config={name}")
+        out.extend(f"{pad}- {_yaml_scalar(f)}" for f in flags)
 
-    tasks: dict[str, Any] = {}
-    for task_name, display, platform, config_name in _TASK_SPEC:
-        tasks[task_name] = {
-            "name": display,
-            "platform": platform,
-            "bazel": "${{ bazel }}",
-            "test_flags": flags_for(configs, config_name),
-            "test_targets": ["@llvm-project//..."],
-        }
-
-    return {
-        "matrix": {
-            "platform": linux_platforms,
-            "bazel": bazel_versions,
-        },
-        "tasks": tasks,
-    }
+    rendered = "\n".join(out) + "\n"
+    # The output must stand on its own: parse it, and make sure no config
+    # reference survived (a nested one inside a string, say).
+    doc = yaml.safe_load(rendered)
+    for task_name, task in (doc.get("tasks") or {}).items():
+        for key_name in ("test_flags", "build_flags"):
+            for flag in task.get(key_name) or []:
+                if isinstance(flag, str) and flag.startswith("--config="):
+                    raise ValueError(f"{task_name}.{key_name}: {flag} was not expanded")
+    return rendered
 
 
 _HEADER = """\
-# Generated by `bazel run //tools:render_presubmit -- --llvm-version {llvm_version}`.
-# DO NOT EDIT BY HAND — re-run the renderer if you need to change the structure
-# or to pick up upstream `.bazelrc` changes from this version's prepared source.
+# Rendered by `bazel run //tools:render_presubmit -- --llvm-version {llvm_version}`
+# from tools/presubmit.template.yml and this version's prepared .bazelrc. Every
+# `--config=NAME` entry in the template was replaced by the flags NAME selects
+# there; everything else is copied from the template as written.
 #
-# The renderer expands `--config=X` references from this version's `.bazelrc`
-# into the literal flags they select, so the test workspace bazelci synthesizes
-# (which has no `.bazelrc` of its own) can resolve every flag without needing
-# to find the config definition elsewhere.
+# This file belongs to {llvm_version}: hand edits it needs are fine. Re-render
+# after a patch changes the .bazelrc, or run with `--check` to see the drift.
 """
 
 
-def emit_yaml(rendered: dict[str, Any], llvm_version: str) -> str:
-    body: str = yaml.dump(rendered, sort_keys=False, default_flow_style=False, width=200)
-    return _HEADER.format(llvm_version=llvm_version) + body
+def _strip_leading_comment(text: str) -> str:
+    """Drop the template's own header so the rendered header replaces it."""
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
+        i += 1
+    return "\n".join(lines[i:]) + "\n"
 
 
-def _resolve_prepared_source(repo_root: Path, llvm_version: str, versions_dir: Path) -> Path:
-    """Locate the prepared source tree for *llvm_version*.
+def render(template_path: Path, bazelrc_path: Path, llvm_version: str) -> str:
+    configs = parse_bazelrc(bazelrc_path)
+    body = _strip_leading_comment(template_path.read_text(encoding="utf-8"))
+    return _HEADER.format(llvm_version=llvm_version) + render_template(body, configs)
 
-    Returns ``<repo>/build/<llvm_version>/llvm-project-<version>.bzl``, where
-    ``version`` is read from ``versions/<llvm_version>/version.txt``. Errors
-    with a clear message if the tree doesn't exist — the user must run
-    ``cherry_pick prepare --llvm-version <llvm_version>`` first.
+
+def _resolve_prepared_bazelrc(repo_root: Path, llvm_version: str, versions_dir: Path) -> Path:
+    """Locate the prepared source's .bazelrc for *llvm_version*.
+
+    That is ``<repo>/build/<llvm_version>/llvm-project-<version>.bzl/.bazelrc``
+    with ``version`` from ``versions/<llvm_version>/version.txt``; it exists
+    after ``cherry_pick prepare`` / ``build --prepare-only`` has run.
     """
     version_file = versions_dir / llvm_version / "version.txt"
     if not version_file.is_file():
         raise SystemExit(f"ERROR: missing {version_file}")
-    version = version_file.read_text().strip()
-
-    tree = repo_root / "build" / llvm_version / f"llvm-project-{version}.bzl"
-    if not (tree / ".bazelrc").is_file():
+    version = version_file.read_text(encoding="utf-8").strip()
+    bazelrc = repo_root / "build" / llvm_version / f"llvm-project-{version}.bzl" / ".bazelrc"
+    if not bazelrc.is_file():
         raise SystemExit(
-            f"ERROR: {tree}/.bazelrc not found. Run:\n"
+            f"ERROR: {bazelrc} not found. Run:\n"
             f"  bazel run //tools:cherry_pick -- prepare --llvm-version {llvm_version}"
         )
-    return tree
+    return bazelrc
 
 
 def main() -> None:
     std_logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=std_logging.INFO)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--llvm-version", required=True, help="Version directory under versions/ (e.g. 17.0.5)")
+    parser.add_argument("--versions-dir", type=_user_cwd_path, help="Path to versions/ (default: <repo>/versions)")
     parser.add_argument(
-        "--versions-dir",
+        "--template",
         type=_user_cwd_path,
-        help="Path to versions/ directory (default: <repo>/versions)",
+        help=f"Template to render (default: <repo>/{TEMPLATE_RELATIVE_PATH.as_posix()})",
     )
     parser.add_argument(
         "--bazelrc",
         type=_user_cwd_path,
         help=(
-            "Path to a .bazelrc to render from (default: read from the prepared "
-            "source at build/<llvm_version>/llvm-project-<version>.bzl/.bazelrc, "
-            "which requires `cherry_pick prepare` to have been run). Use this "
-            "flag for seed-time generation when no prepared source exists yet "
-            "(e.g. the new-version auto-PR workflow can download upstream's "
-            "utils/bazel/.bazelrc directly via curl)."
+            "The .bazelrc to expand --config= entries from (default: the prepared "
+            "source's, which requires `cherry_pick prepare` to have run). Seeding a "
+            "brand-new version passes upstream's .bazelrc for the tag here; with no "
+            "patches yet, that is the post-patch file."
         ),
     )
     parser.add_argument(
-        "--linux-platforms",
-        default="debian10,ubuntu2404",
-        help="Comma-separated linux platform values for the matrix (default: debian10,ubuntu2404)",
+        "--output", "-o", type=_user_cwd_path, help="Write here (default: versions/<llvm_version>/presubmit.yml)"
     )
     parser.add_argument(
-        "--bazel-versions",
-        default="7.x,8.x,9.x",
-        help="Comma-separated bazel versions for the matrix (default: 7.x,8.x,9.x)",
-    )
-    parser.add_argument(
-        "--output",
-        "-o",
-        type=_user_cwd_path,
-        help="Write the rendered YAML here (default: versions/<llvm_version>/presubmit.yml)",
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Print a diff vs. the existing file and exit non-zero on drift; do not write.",
+        "--check", action="store_true", help="Diff against the existing file and exit non-zero on drift; do not write."
     )
     args = parser.parse_args()
 
     repo_root = _workspace_root()
     versions_dir = args.versions_dir or repo_root / "versions"
-
+    template = args.template or repo_root / TEMPLATE_RELATIVE_PATH
+    if not template.is_file():
+        raise SystemExit(f"ERROR: template {template} does not exist")
     if args.bazelrc is not None:
-        bazelrc_path = args.bazelrc
-        if not bazelrc_path.is_file():
-            raise SystemExit(f"ERROR: --bazelrc {bazelrc_path} does not exist")
+        bazelrc = args.bazelrc
+        if not bazelrc.is_file():
+            raise SystemExit(f"ERROR: --bazelrc {bazelrc} does not exist")
     else:
-        tree = _resolve_prepared_source(repo_root, args.llvm_version, versions_dir)
-        bazelrc_path = tree / ".bazelrc"
+        bazelrc = _resolve_prepared_bazelrc(repo_root, args.llvm_version, versions_dir)
 
-    rendered = render_presubmit(
-        bazelrc_path=bazelrc_path,
-        linux_platforms=[p.strip() for p in args.linux_platforms.split(",") if p.strip()],
-        bazel_versions=[b.strip() for b in args.bazel_versions.split(",") if b.strip()],
-    )
-    output_text = emit_yaml(rendered, args.llvm_version)
-
+    output_text = render(template, bazelrc, args.llvm_version)
     target = args.output or versions_dir / args.llvm_version / "presubmit.yml"
 
     if args.check:
         existing = target.read_text(encoding="utf-8") if target.is_file() else ""
         if existing == output_text:
-            logging.info("%s is up to date.", target)
+            logging.info("%s matches a fresh render.", target)
             return
-        diff = "\n".join(
-            difflib.unified_diff(
-                existing.splitlines(),
-                output_text.splitlines(),
-                fromfile=str(target),
-                tofile=str(target) + " (rendered)",
-                lineterm="",
+        sys.stdout.write(
+            "\n".join(
+                difflib.unified_diff(
+                    existing.splitlines(),
+                    output_text.splitlines(),
+                    fromfile=str(target),
+                    tofile=str(target) + " (rendered)",
+                    lineterm="",
+                )
             )
+            + "\n"
         )
-        sys.stdout.write(diff + "\n")
-        raise SystemExit(
-            f"ERROR: {target} is out of date with the renderer's output. Re-run without --check to update."
-        )
+        raise SystemExit(f"{target} differs from a fresh render (see diff above).")
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Always UTF-8: the rendered header contains non-ASCII punctuation, and
-    # Python's default encoding is the locale codepage on Windows (cp1252),
-    # which would silently write mojibake into a checked-in file.
+    # Always UTF-8: Python's default on Windows is the locale codepage.
     target.write_text(output_text, encoding="utf-8")
     logging.info("Wrote %s", target)
 
 
 if __name__ == "__main__":
-    _cwd = os.environ.get("BUILD_WORKING_DIRECTORY")
-    if _cwd:
-        os.chdir(_cwd)
     main()
