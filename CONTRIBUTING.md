@@ -2,19 +2,17 @@
 
 ## Adding a new LLVM version
 
-New upstream releases are detected automatically by the `check-llvm-release` workflow, which runs twice daily. It opens a PR with the scaffolding for each new release:
+New upstream releases are detected automatically by the `check-llvm-release` workflow, which runs twice daily. It opens a PR with `versions/{version}/` seeded by `tools/seed_version.py`:
 
-- `versions/{version}/version.txt`
-- `versions/{version}/presubmit.yml` (from template)
+- **Same major line as a tracked version** (17.0.6 after 17.0.5, or 17.1.0 after 17.0.5): `patches/` and `presubmit.yml` are copied from the nearest lower version, since both almost certainly still apply.
+- **New major line** (18.0.0): no patches, and `presubmit.yml` rendered from `tools/presubmit.template.yml` against upstream's `.bazelrc` for the tag.
 
-Review the presubmit configuration, add any necessary patches, then merge to trigger the release pipeline. The upstream tarball, its GPG signature, and the LLVM release signing key are fetched from official sources at build time — none of them are committed.
+Review the PR, fix any patch that stopped applying, then merge to trigger the release pipeline. The upstream tarball, its GPG signature, and the LLVM release signing key are fetched from official sources at build time — none of them are committed.
 
-To manually seed a version, run the **Check LLVM Release** workflow from the Actions tab with the `llvm_version` input, or:
+To seed a version by hand, run the **Check LLVM Release** workflow from the Actions tab with the `llvm_version` input, or:
 
 ```bash
-mkdir -p versions/{version}
-echo "{version}" > versions/{version}/version.txt
-cp .bcr/presubmit.yml versions/{version}/presubmit.yml
+bazel run //tools:seed_version -- --llvm-version {version}
 ```
 
 ## Adding or updating patches

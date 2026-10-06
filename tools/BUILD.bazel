@@ -116,6 +116,12 @@ py_test(
 )
 
 py_binary(
+    name = "seed_version",
+    srcs = ["seed_version.py"],
+    deps = [":render_presubmit"],
+)
+
+py_binary(
     name = "cherry_pick",
     srcs = ["cherry_pick.py"],
     deps = [":build"],
