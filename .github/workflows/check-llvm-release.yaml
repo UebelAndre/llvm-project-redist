@@ -89,36 +89,19 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Bootstrap version directory
+      - name: Setup Bazelisk
+        if: steps.existing.outputs.skip != 'true'
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Seed version directory
         if: steps.existing.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          LLVM_VERSION="${{ matrix.llvm_version }}"
-          VERSION_DIR="versions/${LLVM_VERSION}"
-
-          mkdir -p "${VERSION_DIR}"
-
-          if [ ! -f "${VERSION_DIR}/version.txt" ]; then
-            echo "${LLVM_VERSION}" > "${VERSION_DIR}/version.txt"
-            echo "Created version.txt with ${LLVM_VERSION}"
-          fi
-
-          if [ ! -f "${VERSION_DIR}/presubmit.yml" ]; then
-            # Render presubmit.yml from upstream's .bazelrc for this LLVM tag.
-            # The renderer expands `--config=X` references inline so the result
-            # is self-contained (bazelci's synthetic test workspace has no
-            # .bazelrc of its own). Downloading just the .bazelrc avoids
-            # extracting the full source tarball at seed time.
-            BAZELRC_URL="https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-${LLVM_VERSION}/utils/bazel/.bazelrc"
-            curl -fsSL "${BAZELRC_URL}" -o /tmp/upstream-bazelrc
-            echo "Fetched upstream .bazelrc from llvmorg-${LLVM_VERSION}"
-
-            bazel run //tools:render_presubmit -- \
-              --llvm-version "${LLVM_VERSION}" \
-              --bazelrc /tmp/upstream-bazelrc \
-              --output "${VERSION_DIR}/presubmit.yml"
-            echo "Rendered ${VERSION_DIR}/presubmit.yml"
-          fi
+          # Same major line as a tracked version: copy the nearest lower one
+          # (patches and presubmit.yml). New major line: start clean, with
+          # presubmit.yml rendered from tools/presubmit.template.yml against
+          # upstream's .bazelrc for the tag. See tools/seed_version.py.
+          bazel run //tools:seed_version -- --llvm-version "${{ matrix.llvm_version }}"
 
       - name: Create PR
         if: steps.existing.outputs.skip != 'true'

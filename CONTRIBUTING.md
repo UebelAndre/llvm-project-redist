@@ -2,19 +2,17 @@
 
 ## Adding a new LLVM version
 
-New upstream releases are detected automatically by the `check-llvm-release` workflow, which runs twice daily. It opens a PR with the scaffolding for each new release:
+New upstream releases are detected automatically by the `check-llvm-release` workflow, which runs twice daily. It opens a PR with `versions/{version}/` seeded by `tools/seed_version.py`:
 
-- `versions/{version}/version.txt`
-- `versions/{version}/presubmit.yml` (from template)
+- **Same major line as a tracked version** (17.0.6 after 17.0.5, or 17.1.0 after 17.0.5): `patches/` and `presubmit.yml` are copied from the nearest lower version, since both almost certainly still apply.
+- **New major line** (18.0.0): no patches, and `presubmit.yml` rendered from `tools/presubmit.template.yml` against upstream's `.bazelrc` for the tag.
 
-Review the presubmit configuration, add any necessary patches, then merge to trigger the release pipeline. The upstream tarball, its GPG signature, and the LLVM release signing key are fetched from official sources at build time — none of them are committed.
+Review the PR, fix any patch that stopped applying, then merge to trigger the release pipeline. The upstream tarball, its GPG signature, and the LLVM release signing key are fetched from official sources at build time — none of them are committed.
 
-To manually seed a version, run the **Check LLVM Release** workflow from the Actions tab with the `llvm_version` input, or:
+To seed a version by hand, run the **Check LLVM Release** workflow from the Actions tab with the `llvm_version` input, or:
 
 ```bash
-mkdir -p versions/{version}
-echo "{version}" > versions/{version}/version.txt
-cp .bcr/presubmit.yml versions/{version}/presubmit.yml
+bazel run //tools:seed_version -- --llvm-version {version}
 ```
 
 ## Adding or updating patches
@@ -105,6 +103,16 @@ Commits that don't touch `utils/bazel/` error out by default — pass `--allow-n
 ## Presubmit testing
 
 Each `versions/{version}/presubmit.yml` follows the [Bazel CI presubmit format](https://github.com/bazelbuild/continuous-integration). Tests run on Buildkite with remote caching, matching the BCR presubmit experience.
+
+The file is rendered from `tools/presubmit.template.yml`, which is the one place that says what this CI runs: tasks, platforms, Bazel versions, and literal flags that are about CI (tag filters, `--keep_going`, incompatible flags). Anything about *how LLVM builds* lives in upstream's `.bazelrc` -- patched in `versions/{version}/patches/` when a version needs it, and preferably fixed upstream -- and the template references it with `--config=NAME`. Rendering replaces each `--config=NAME` with the flags it selects in that version's prepared (post-patch) `.bazelrc`, because CI and BCR consume llvm-project as a dependency and Bazel only reads the root module's `.bazelrc`.
+
+```bash
+bazel run //tools:cherry_pick -- prepare --llvm-version 17.0.5          # materialize the post-patch source
+bazel run //tools:render_presubmit -- --llvm-version 17.0.5             # (re)render versions/17.0.5/presubmit.yml
+bazel run //tools:render_presubmit -- --llvm-version 17.0.5 --check     # show drift from a fresh render
+```
+
+The rendered file belongs to its version: hand edits that version needs are fine, and `--check` shows how far it has drifted. Re-render after a patch changes the `.bazelrc`.
 
 To reproduce locally:
 

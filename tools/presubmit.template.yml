@@ -1,0 +1,121 @@
+# Template for versions/<llvm_version>/presubmit.yml.
+#
+# `bazel run //tools:render_presubmit -- --llvm-version X` copies this file
+# and replaces every `--config=NAME` entry with the flags NAME selects in that
+# version's prepared (post-patch) .bazelrc: the .bazelrc's unconditional flags
+# once per flag list, then NAME flattened recursively, in .bazelrc order.
+# Nothing else is touched -- comments, task names, the matrix and literal flags
+# are copied as written. The result has to be self-contained: CI and BCR run
+# llvm-project as a dependency, and Bazel only reads the root module's .bazelrc.
+#
+# Put flags that are about *this* CI here, literally. Put flags that are about
+# how LLVM builds in upstream's .bazelrc -- patched when a version needs it,
+# and preferably fixed upstream -- and reference them with `--config=`.
+#
+# The rendered file belongs to its version: hand edits are allowed when that
+# version needs them. `render_presubmit --check` shows how far a version's
+# file has drifted from a fresh render.
+matrix:
+  platform:
+    - debian10
+    - ubuntu2404
+  bazel:
+    - 7.x
+    - 8.x
+    - 9.x
+  # Bazel 7's embedded cc_configure misparses the version line of Clang >= 22
+  # and cannot set up a clang-cl toolchain; Bazel 8+ takes cc_configure from
+  # rules_cc, which carries the fix. Only the clang-cl task reads this axis.
+  bazel_clang_cl:
+    - 8.x
+    - 9.x
+tasks:
+  run_tests:
+    name: bazel test //... (linux, clang)
+    platform: ${{ platform }}
+    bazel: ${{ bazel }}
+    # generic_clang links with -fuse-ld=lld ("assume that anybody using clang
+    # also has lld available"); bazelci's Linux images do not.
+    shell_commands:
+      - sudo apt-get update
+      - sudo apt-get install -y --no-install-recommends lld
+    test_flags:
+      - --config=generic_clang
+      - --build_tag_filters=-nobuildkite
+      - --test_tag_filters=-nobuildkite
+      - --keep_going
+      - --incompatible_disallow_empty_glob=true
+      - --incompatible_autoload_externally=
+    test_targets:
+      - '@llvm-project//...'
+  run_tests_gcc:
+    name: bazel test //... (linux, gcc)
+    platform: ${{ platform }}
+    bazel: ${{ bazel }}
+    test_flags:
+      - --config=generic_gcc
+      - --build_tag_filters=-nobuildkite
+      - --test_tag_filters=-nobuildkite
+      - --keep_going
+      - --incompatible_disallow_empty_glob=true
+      - --incompatible_autoload_externally=
+    test_targets:
+      - '@llvm-project//...'
+  # generic_clang's -fuse-ld=lld is unsatisfied on the bazelci macOS runners
+  # (clang looks for ld64.lld, which homebrew's keg-only lld does not put on
+  # PATH). Upstream runs no Bazel CI on macOS, so the flag is untested there
+  # either way; a version's rendered file may drop the two linkopts by hand.
+  run_tests_macos:
+    name: bazel test //... (macOS x86_64, clang)
+    platform: macos
+    bazel: ${{ bazel }}
+    test_flags:
+      - --config=generic_clang
+      - --build_tag_filters=-nobuildkite
+      - --test_tag_filters=-nobuildkite
+      - --keep_going
+      - --incompatible_disallow_empty_glob=true
+      - --incompatible_autoload_externally=
+    test_targets:
+      - '@llvm-project//...'
+  run_tests_macos_arm64:
+    name: bazel test //... (macOS arm64, clang)
+    platform: macos_arm64
+    bazel: ${{ bazel }}
+    test_flags:
+      - --config=generic_clang
+      - --build_tag_filters=-nobuildkite
+      - --test_tag_filters=-nobuildkite
+      - --keep_going
+      - --incompatible_disallow_empty_glob=true
+      - --incompatible_autoload_externally=
+    test_targets:
+      - '@llvm-project//...'
+  # `no_windows` is upstream's own tag for targets whose test driver needs a
+  # POSIX shell (mlir's gentbl_test); the tag is inert unless filtered on.
+  run_tests_windows_clang_cl:
+    name: bazel test //... (windows, clang-cl)
+    platform: windows
+    bazel: ${{ bazel_clang_cl }}
+    test_flags:
+      - --config=clang-cl
+      - --build_tag_filters=-nobuildkite,-no_windows
+      - --test_tag_filters=-nobuildkite,-no_windows
+      - --keep_going
+      - --incompatible_disallow_empty_glob=true
+      - --incompatible_autoload_externally=
+    test_targets:
+      - '@llvm-project//...'
+  run_tests_windows_msvc:
+    name: bazel test //... (windows, msvc)
+    platform: windows
+    bazel: ${{ bazel }}
+    test_flags:
+      - --config=msvc
+      - --build_tag_filters=-nobuildkite,-no_windows
+      - --test_tag_filters=-nobuildkite,-no_windows
+      - --keep_going
+      - --incompatible_disallow_empty_glob=true
+      - --incompatible_autoload_externally=
+    test_targets:
+      - '@llvm-project//...'
