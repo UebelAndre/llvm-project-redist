@@ -42,6 +42,46 @@ import yaml
 
 logging = std_logging.getLogger(__name__)
 
+_SCRIPTS_DIR = Path(__file__).absolute().parent
+_REPO_ROOT = _SCRIPTS_DIR.parent
+
+
+def _workspace_root() -> Path:
+    """Return the source tree this invocation should read from and write to.
+
+    ``bazel run`` execs the script out of the runfiles tree, so
+    ``Path(__file__).parent.parent`` resolves to the runfiles ``_main``
+    directory rather than the checkout. Nothing this tool touches is a
+    runfiles entry: ``versions/<v>/presubmit.yml`` is written back to the
+    source tree, and the prepared source it reads ``.bazelrc`` from is
+    generated at runtime by ``cherry_pick prepare`` (so it can never be a
+    build-time ``data`` dep). ``BUILD_WORKSPACE_DIRECTORY`` — set by
+    ``bazel run`` to the workspace root — is the right anchor for all of
+    them. Fall back to the ``__file__``-relative root so running the script
+    directly still works. Mirrors ``setup_presubmit._workspace_root``.
+    """
+    env = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    if env:
+        return Path(env)
+    return _REPO_ROOT
+
+
+def _user_cwd_path(s: str) -> Path:
+    """Resolve a relative path against the shell's working directory.
+
+    ``bazel run`` changes the process CWD to the runfiles dir before
+    exec-ing the script, which would break relative paths the user typed on
+    the command line. Anchor them to ``BUILD_WORKING_DIRECTORY`` (set by
+    ``bazel run`` to the invoking shell's CWD), falling back to the current
+    CWD when not under bazel. Mirrors ``release_notes._user_cwd_path``.
+    """
+    p = Path(s)
+    if p.is_absolute():
+        return p
+    base = os.environ.get("BUILD_WORKING_DIRECTORY") or os.getcwd()
+    return Path(base) / p
+
+
 # Lines in .bazelrc look like:
 #   <cmd>[:<config>] <flag> [<flag> ...]
 # where <cmd> is one of: build, common, test, run, query, fetch, sync, etc.
@@ -85,7 +125,7 @@ def parse_bazelrc(path: Path) -> dict[str | None, list[str]]:
     Imports are NOT currently followed (none of llvm-project's bazelrc
     uses ``import``; if it ever does, this function will need extending).
     """
-    raw = path.read_text()
+    raw = path.read_text(encoding="utf-8")
     # Join backslash-continued lines so a single logical directive ends up
     # on one parsed line. Trailing-backslash + newline + leading whitespace
     # collapses to a single space.
@@ -238,12 +278,12 @@ def main() -> None:
     parser.add_argument("--llvm-version", required=True, help="Version directory under versions/ (e.g. 17.0.5)")
     parser.add_argument(
         "--versions-dir",
-        type=Path,
+        type=_user_cwd_path,
         help="Path to versions/ directory (default: <repo>/versions)",
     )
     parser.add_argument(
         "--bazelrc",
-        type=Path,
+        type=_user_cwd_path,
         help=(
             "Path to a .bazelrc to render from (default: read from the prepared "
             "source at build/<llvm_version>/llvm-project-<version>.bzl/.bazelrc, "
@@ -266,7 +306,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         "-o",
-        type=Path,
+        type=_user_cwd_path,
         help="Write the rendered YAML here (default: versions/<llvm_version>/presubmit.yml)",
     )
     parser.add_argument(
@@ -276,7 +316,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = _workspace_root()
     versions_dir = args.versions_dir or repo_root / "versions"
 
     if args.bazelrc is not None:
@@ -297,7 +337,7 @@ def main() -> None:
     target = args.output or versions_dir / args.llvm_version / "presubmit.yml"
 
     if args.check:
-        existing = target.read_text() if target.is_file() else ""
+        existing = target.read_text(encoding="utf-8") if target.is_file() else ""
         if existing == output_text:
             logging.info("%s is up to date.", target)
             return
@@ -316,7 +356,10 @@ def main() -> None:
         )
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(output_text)
+    # Always UTF-8: the rendered header contains non-ASCII punctuation, and
+    # Python's default encoding is the locale codepage on Windows (cp1252),
+    # which would silently write mojibake into a checked-in file.
+    target.write_text(output_text, encoding="utf-8")
     logging.info("Wrote %s", target)
 
 

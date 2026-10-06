@@ -3,10 +3,17 @@ bazel-*
 build/
 user.bazelrc
 MODULE.bazel.lock
+
+# Python patterns
 __pycache__/
 /*venv*
+/.ruff_cache
+/.mypy_cache
 
 # Source preparation and local presubmit testing
 llvm-project-*.bzl/
 temp_test_repos/
 *.task_config.json
+/*.tar.xz
+/*.tar.gz
+/*.tar.zstd

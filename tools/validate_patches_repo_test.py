@@ -13,7 +13,7 @@ def _find_versions_dir() -> Path:
     if runfiles_dir:
         workspace = os.environ.get("TEST_WORKSPACE", "")
         return Path(runfiles_dir) / workspace / "versions"
-    return Path(__file__).resolve().parent.parent / "versions"
+    return Path(__file__).absolute().parent.parent / "versions"
 
 
 VERSIONS_DIR = _find_versions_dir()
