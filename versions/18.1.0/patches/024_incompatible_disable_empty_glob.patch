@@ -1,0 +1,4165 @@
+# Local equivalent (regenerated for this release) of:
+# Upstream-Commit: https://github.com/llvm/llvm-project/commit/72c729f354d71697a1402720c90b57ff521b6739
+diff --git a/bolt/BUILD.bazel b/bolt/BUILD.bazel
+--- a/bolt/BUILD.bazel
++++ b/bolt/BUILD.bazel
+@@ -80,10 +80,10 @@ cc_library(
+         "//llvm:Analysis",
+         "//llvm:BinaryFormat",
+         "//llvm:CodeGen",
++        "//llvm:DWARFLinker",
+         "//llvm:DWP",
+         "//llvm:DebugInfoDWARF",
+         "//llvm:Demangle",
+-        "//llvm:DWARFLinker",
+         "//llvm:JITLink",
+         "//llvm:MC",
+         "//llvm:MCDisassembler",
+@@ -221,8 +221,11 @@ cc_library(
+     srcs = glob([
+         "lib/Target/AArch64/*.cpp",
+     ]),
+-    hdrs = glob([
+-    ]),
++    hdrs = glob(
++        [
++        ],
++        allow_empty = True,
++    ),
+     includes = ["include"],
+     deps = [
+         ":Core",
+diff --git a/clang-tools-extra/clang-tidy/defs.bzl b/clang-tools-extra/clang-tidy/defs.bzl
+--- a/clang-tools-extra/clang-tidy/defs.bzl
++++ b/clang-tools-extra/clang-tidy/defs.bzl
+@@ -16,8 +16,8 @@ _common_library_deps = [
+ ]
+ 
+ def clang_tidy_library(name, **kwargs):
+-    kwargs["srcs"] = kwargs.get("srcs", native.glob([paths.join(name, "*.cpp")]))
+-    kwargs["hdrs"] = kwargs.get("hdrs", native.glob([paths.join(name, "*.h")]))
++    kwargs["srcs"] = kwargs.get("srcs", native.glob([paths.join(name, "*.cpp")], allow_empty = True))
++    kwargs["hdrs"] = kwargs.get("hdrs", native.glob([paths.join(name, "*.h")], allow_empty = True))
+     kwargs["deps"] = kwargs.get("deps", []) + _common_library_deps
+     cc_library(
+         name = name,
+diff --git a/clang/BUILD.bazel b/clang/BUILD.bazel
+--- a/clang/BUILD.bazel
++++ b/clang/BUILD.bazel
+@@ -4,10 +4,6 @@
+ 
+ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+ load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+-load("//:workspace_root.bzl", "workspace_root")
+-load("//llvm:tblgen.bzl", "gentbl")
+-load("//llvm:binary_alias.bzl", "binary_alias")
+-load("//llvm:cc_plugin_library.bzl", "cc_plugin_library")
+ load(
+     "//:vars.bzl",
+     "LLVM_VERSION",
+@@ -15,6 +11,10 @@ load(
+     "LLVM_VERSION_MINOR",
+     "LLVM_VERSION_PATCH",
+ )
++load("//:workspace_root.bzl", "workspace_root")
++load("//llvm:binary_alias.bzl", "binary_alias")
++load("//llvm:cc_plugin_library.bzl", "cc_plugin_library")
++load("//llvm:tblgen.bzl", "gentbl")
+ 
+ package(
+     default_visibility = ["//visibility:public"],
+@@ -557,13 +557,16 @@ cc_library(
+     srcs = [
+         "include/VCSVersion.inc",
+         "include/clang/Basic/Version.inc",
+-    ] + glob([
+-        "lib/Basic/*.cpp",
+-        "lib/Basic/*.c",
+-        "lib/Basic/*.h",
+-        "lib/Basic/Targets/*.cpp",
+-        "lib/Basic/Targets/*.h",
+-    ]),
++    ] + glob(
++        [
++            "lib/Basic/*.cpp",
++            "lib/Basic/*.c",
++            "lib/Basic/*.h",
++            "lib/Basic/Targets/*.cpp",
++            "lib/Basic/Targets/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/clang/Basic/*.h",
+     ]),
+@@ -980,12 +983,15 @@ genrule(
+ 
+ cc_library(
+     name = "analysis",
+-    srcs = glob([
+-        "lib/Analysis/FlowSensitive/Models/*.cpp",
+-        "lib/Analysis/FlowSensitive/*.cpp",
+-        "lib/Analysis/*.cpp",
+-        "lib/Analysis/*.h",
+-    ]) + [
++    srcs = glob(
++        [
++            "lib/Analysis/FlowSensitive/Models/*.cpp",
++            "lib/Analysis/FlowSensitive/*.cpp",
++            "lib/Analysis/*.cpp",
++            "lib/Analysis/*.h",
++        ],
++        allow_empty = True,
++    ) + [
+         ":analysis_htmllogger_gen",
+     ],
+     hdrs = glob([
+@@ -1122,10 +1128,13 @@ gentbl(
+ cc_library(
+     name = "parse",
+     srcs = [
+-    ] + glob([
+-        "lib/Parse/*.cpp",
+-        "lib/Parse/*.h",
+-    ]),
++    ] + glob(
++        [
++            "lib/Parse/*.cpp",
++            "lib/Parse/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = [
+         "include/clang/Parse/AttrParserStringSwitches.inc",
+         "include/clang/Parse/AttrSubMatchRulesParserStringSwitches.inc",
+@@ -1146,10 +1155,13 @@ cc_library(
+ 
+ cc_library(
+     name = "ast_matchers",
+-    srcs = glob([
+-        "lib/ASTMatchers/*.cpp",
+-        "lib/ASTMatchers/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/ASTMatchers/*.cpp",
++            "lib/ASTMatchers/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/clang/ASTMatchers/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -1180,10 +1192,13 @@ cc_library(
+ 
+ cc_library(
+     name = "rewrite",
+-    srcs = glob([
+-        "lib/Rewrite/*.cpp",
+-        "lib/Rewrite/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Rewrite/*.cpp",
++            "lib/Rewrite/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/clang/Rewrite/Core/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -1214,10 +1229,13 @@ cc_library(
+ 
+ cc_library(
+     name = "tooling_core",
+-    srcs = glob([
+-        "lib/Tooling/Core/*.cpp",
+-        "lib/Tooling/Core/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Tooling/Core/*.cpp",
++            "lib/Tooling/Core/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/clang/Tooling/Core/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -1279,14 +1297,20 @@ cc_library(
+ 
+ cc_library(
+     name = "tooling_refactoring",
+-    srcs = glob([
+-        "lib/Tooling/Refactoring/**/*.cpp",
+-        "lib/Tooling/Refactoring/**/*.h",
+-    ]),
+-    hdrs = glob([
+-        "include/clang/Tooling/Refactoring/**/*.h",
+-        "include/clang/Tooling/Refactoring/**/*.def",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Tooling/Refactoring/**/*.cpp",
++            "lib/Tooling/Refactoring/**/*.h",
++        ],
++        allow_empty = True,
++    ),
++    hdrs = glob(
++        [
++            "include/clang/Tooling/Refactoring/**/*.h",
++            "include/clang/Tooling/Refactoring/**/*.def",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         ":ast",
+         ":ast_matchers",
+@@ -1542,6 +1566,7 @@ cc_library(
+             "lib/Driver/ToolChains/Arch/*.cpp",
+             "lib/Driver/ToolChains/Arch/*.h",
+         ],
++        allow_empty = True,
+         exclude = [
+             "lib/Driver/ToolChains/MSVCSetupApi.h",
+         ],
+@@ -1771,9 +1796,12 @@ cc_library(
+     copts = ["$(STACK_FRAME_UNLIMITED)"],
+     data = [":builtin_headers_gen"],
+     includes = ["include"],
+-    textual_hdrs = glob([
+-        "include/clang/Frontend/*.def",
+-    ]),
++    textual_hdrs = glob(
++        [
++            "include/clang/Frontend/*.def",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         ":apinotes",
+         ":ast",
+@@ -1807,10 +1835,13 @@ cc_library(
+ 
+ cc_library(
+     name = "frontend_rewrite",
+-    srcs = glob([
+-        "lib/Frontend/Rewrite/*.cpp",
+-        "lib/Frontend/Rewrite/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Frontend/Rewrite/*.cpp",
++            "lib/Frontend/Rewrite/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/clang/Rewrite/Frontend/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -2026,10 +2057,13 @@ cc_library(
+ 
+ cc_library(
+     name = "frontend_tool",
+-    srcs = glob([
+-        "lib/FrontendTool/*.cpp",
+-        "lib/FrontendTool/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/FrontendTool/*.cpp",
++            "lib/FrontendTool/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/clang/FrontendTool/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -2230,10 +2264,13 @@ cc_binary(
+ cc_binary(
+     name = "clang-import-test",
+     testonly = 1,
+-    srcs = glob([
+-        "tools/clang-import-test/*.cpp",
+-        "tools/clang-import-test/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/clang-import-test/*.cpp",
++            "tools/clang-import-test/*.h",
++        ],
++        allow_empty = True,
++    ),
+     stamp = 0,
+     deps = [
+         ":ast",
+@@ -2260,10 +2297,13 @@ expand_template(
+ 
+ cc_library(
+     name = "clang-driver",
+-    srcs = glob([
+-        "tools/driver/*.cpp",
+-        "tools/driver/*.h",
+-    ]) + ["clang-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/driver/*.cpp",
++            "tools/driver/*.h",
++        ],
++        allow_empty = True,
++    ) + ["clang-driver.cpp"],
+     copts = [
+         # Disable stack frame size checks in the driver because
+         # clang::ensureStackAddressSpace allocates a large array on the stack.
+@@ -2371,8 +2411,8 @@ cc_binary(
+ cc_binary(
+     name = "clang-format",
+     srcs = [
+-        "tools/clang-format/ClangFormat.cpp",
+         "lib/Format/MatchFilePath.h",
++        "tools/clang-format/ClangFormat.cpp",
+     ],
+     stamp = 0,
+     deps = [
+@@ -2577,10 +2617,13 @@ cc_binary(
+ 
+ cc_library(
+     name = "extract_api",
+-    srcs = glob([
+-        "lib/ExtractAPI/**/*.cpp",
+-        "lib/ExtractAPI/**/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/ExtractAPI/**/*.cpp",
++            "lib/ExtractAPI/**/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/clang/ExtractAPI/**/*.h"]),
+     includes = ["include"],
+     deps = [
+diff --git a/lld/BUILD.bazel b/lld/BUILD.bazel
+--- a/lld/BUILD.bazel
++++ b/lld/BUILD.bazel
+@@ -3,12 +3,12 @@
+ # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ 
+ load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+-load("//llvm:tblgen.bzl", "gentbl")
+-load("//llvm:binary_alias.bzl", "binary_alias")
+ load(
+     "//:vars.bzl",
+     "LLVM_VERSION",
+ )
++load("//llvm:binary_alias.bzl", "binary_alias")
++load("//llvm:tblgen.bzl", "gentbl")
+ 
+ package(
+     default_visibility = ["//visibility:public"],
+@@ -185,10 +185,13 @@ gentbl(
+ 
+ cc_library(
+     name = "MinGW",
+-    srcs = glob([
+-        "MinGW/*.cpp",
+-        "MinGW/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "MinGW/*.cpp",
++            "MinGW/*.h",
++        ],
++        allow_empty = True,
++    ),
+     includes = ["MinGW"],
+     deps = [
+         ":Common",
+@@ -294,10 +297,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "lld",
+-    srcs = glob([
+-        "tools/lld/*.cpp",
+-        "tools/lld/*.h",
+-    ]) + ["lld-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/lld/*.cpp",
++            "tools/lld/*.h",
++        ],
++        allow_empty = True,
++    ) + ["lld-driver.cpp"],
+     deps = [
+         ":COFF",
+         ":Common",
+diff --git a/llvm/BUILD.bazel b/llvm/BUILD.bazel
+--- a/llvm/BUILD.bazel
++++ b/llvm/BUILD.bazel
+@@ -51,7 +51,10 @@ enum_targets_gen(
+ llvm_target_asm_printers = [
+     t
+     for t in llvm_targets
+-    if glob(["lib/Target/{}/*AsmPrinter.cpp".format(t)])
++    if glob(
++        ["lib/Target/{}/*AsmPrinter.cpp".format(t)],
++        allow_empty = True,
++    )
+ ]
+ 
+ enum_targets_gen(
+@@ -66,7 +69,10 @@ enum_targets_gen(
+ llvm_target_asm_parsers = [
+     t
+     for t in llvm_targets
+-    if glob(["lib/Target/{}/AsmParser/CMakeLists.txt".format(t)])
++    if glob(
++        ["lib/Target/{}/AsmParser/CMakeLists.txt".format(t)],
++        allow_empty = True,
++    )
+ ]
+ 
+ enum_targets_gen(
+@@ -81,7 +87,10 @@ enum_targets_gen(
+ llvm_target_disassemblers = [
+     t
+     for t in llvm_targets
+-    if glob(["lib/Target/{}/Disassembler/CMakeLists.txt".format(t)])
++    if glob(
++        ["lib/Target/{}/Disassembler/CMakeLists.txt".format(t)],
++        allow_empty = True,
++    )
+ ]
+ 
+ enum_targets_gen(
+@@ -96,7 +105,10 @@ enum_targets_gen(
+ llvm_target_mcas = [
+     t
+     for t in llvm_targets
+-    if glob(["lib/Target/{}/MCA/CMakeLists.txt".format(t)])
++    if glob(
++        ["lib/Target/{}/MCA/CMakeLists.txt".format(t)],
++        allow_empty = True,
++    )
+ ]
+ 
+ enum_targets_gen(
+@@ -111,7 +123,10 @@ enum_targets_gen(
+ llvm_target_exegesis = [
+     t
+     for t in llvm_targets
+-    if glob(["tools/llvm-exegesis/lib/{}/CMakeLists.txt".format(t)])
++    if glob(
++        ["tools/llvm-exegesis/lib/{}/CMakeLists.txt".format(t)],
++        allow_empty = True,
++    )
+ ]
+ 
+ enum_targets_gen(
+@@ -166,10 +181,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Demangle",
+-    srcs = glob([
+-        "lib/Demangle/*.cpp",
+-        "lib/Demangle/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Demangle/*.cpp",
++            "lib/Demangle/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/Demangle/*.h",
+         "include/llvm/Demangle/*.def",
+@@ -210,10 +228,13 @@ cc_library(
+         # To avoid a dependency cycle.
+         "include/llvm/Option/*.h",
+     ]) + select({
+-        "@platforms//os:windows": glob([
+-            "lib/Support/Windows/*.h",
+-            "lib/Support/Windows/*.inc",
+-        ]),
++        "@platforms//os:windows": glob(
++            [
++                "lib/Support/Windows/*.h",
++                "lib/Support/Windows/*.inc",
++            ],
++            allow_empty = True,
++        ),
+         "//conditions:default": glob([
+             "lib/Support/Unix/*.h",
+             "lib/Support/Unix/*.inc",
+@@ -327,10 +348,13 @@ cc_library(
+ 
+ cc_library(
+     name = "LineEditor",
+-    srcs = glob([
+-        "lib/LineEditor/*.cpp",
+-        "lib/LineEditor/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/LineEditor/*.cpp",
++            "lib/LineEditor/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/LineEditor/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -341,10 +365,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Option",
+-    srcs = glob([
+-        "lib/Option/*.cpp",
+-        "lib/Option/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Option/*.cpp",
++            "lib/Option/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/Option/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -388,11 +415,14 @@ cc_library(
+ 
+ cc_library(
+     name = "BinaryFormat",
+-    srcs = glob([
+-        "lib/BinaryFormat/*.cpp",
+-        "lib/BinaryFormat/*.def",
+-        "lib/BinaryFormat/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/BinaryFormat/*.cpp",
++            "lib/BinaryFormat/*.def",
++            "lib/BinaryFormat/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/BinaryFormat/*.h",
+     ]),
+@@ -421,10 +451,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DebugInfoMSF",
+-    srcs = glob([
+-        "lib/DebugInfo/MSF/*.cpp",
+-        "lib/DebugInfo/MSF/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DebugInfo/MSF/*.cpp",
++            "lib/DebugInfo/MSF/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/DebugInfo/MSF/*.h"]),
+     copts = llvm_copts,
+     deps = [":Support"],
+@@ -432,10 +465,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DebugInfoBTF",
+-    srcs = glob([
+-        "lib/DebugInfo/BTF/*.cpp",
+-        "lib/DebugInfo/BTF/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DebugInfo/BTF/*.cpp",
++            "lib/DebugInfo/BTF/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/DebugInfo/BTF/*.h"]) + [
+         "include/llvm/DebugInfo/BTF/BTF.def",
+     ],
+@@ -449,10 +485,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DebugInfoCodeView",
+-    srcs = glob([
+-        "lib/DebugInfo/CodeView/*.cpp",
+-        "lib/DebugInfo/CodeView/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DebugInfo/CodeView/*.cpp",
++            "lib/DebugInfo/CodeView/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/DebugInfo/CodeView/*.h",
+     ]),
+@@ -492,12 +531,15 @@ cc_library(
+ 
+ cc_library(
+     name = "DebugInfoPDB",
+-    srcs = glob([
+-        "lib/DebugInfo/PDB/*.cpp",
+-        "lib/DebugInfo/PDB/*.h",
+-        "lib/DebugInfo/PDB/Native/*.cpp",
+-        "lib/DebugInfo/PDB/Native/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DebugInfo/PDB/*.cpp",
++            "lib/DebugInfo/PDB/*.h",
++            "lib/DebugInfo/PDB/Native/*.cpp",
++            "lib/DebugInfo/PDB/Native/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/DebugInfo/PDB/*.h",
+         "include/llvm/DebugInfo/PDB/Native/*.h",
+@@ -535,15 +577,21 @@ cc_library(
+ 
+ cc_library(
+     name = "MC",
+-    srcs = glob([
+-        "lib/MC/*.cpp",
+-        "lib/MC/*.h",
+-    ]),
+-    hdrs = glob([
+-        "include/llvm/MC/*.h",
+-        "include/llvm/MC/*.def",
+-        "include/llvm/MC/*.inc",
+-    ]),
++    srcs = glob(
++        [
++            "lib/MC/*.cpp",
++            "lib/MC/*.h",
++        ],
++        allow_empty = True,
++    ),
++    hdrs = glob(
++        [
++            "include/llvm/MC/*.h",
++            "include/llvm/MC/*.def",
++            "include/llvm/MC/*.inc",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     deps = [
+         ":BinaryFormat",
+@@ -557,10 +605,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DebugInfoDWARF",
+-    srcs = glob([
+-        "lib/DebugInfo/DWARF/*.cpp",
+-        "lib/DebugInfo/DWARF/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DebugInfo/DWARF/*.cpp",
++            "lib/DebugInfo/DWARF/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/DebugInfo/DWARF/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -575,10 +626,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DebugInfoGSYM",
+-    srcs = glob([
+-        "lib/DebugInfo/GSYM/*.cpp",
+-        "lib/DebugInfo/GSYM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DebugInfo/GSYM/*.cpp",
++            "lib/DebugInfo/GSYM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/DebugInfo/GSYM/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -592,10 +646,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Symbolize",
+-    srcs = glob([
+-        "lib/DebugInfo/Symbolize/*.cpp",
+-        "lib/DebugInfo/Symbolize/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DebugInfo/Symbolize/*.cpp",
++            "lib/DebugInfo/Symbolize/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/DebugInfo/Symbolize/*.h",
+         "include/llvm/Debuginfod/*.h",
+@@ -670,17 +727,20 @@ cc_library(
+ 
+ cc_binary(
+     name = "llvm-tblgen",
+-    srcs = glob([
+-        "utils/TableGen/*.cpp",
+-        "utils/TableGen/*.inc",
+-        "utils/TableGen/*.h",
+-
+-        # Some tablegen sources include headers from MC, so these have to be
+-        # listed here. MC uses headers produced by tablegen, so it cannot be a
+-        # regular dependency.
+-        "include/llvm/MC/*.h",
+-        "include/llvm/TargetParser/SubtargetFeature.h",
+-    ]),
++    srcs = glob(
++        [
++            "utils/TableGen/*.cpp",
++            "utils/TableGen/*.inc",
++            "utils/TableGen/*.h",
++
++            # Some tablegen sources include headers from MC, so these have to be
++            # listed here. MC uses headers produced by tablegen, so it cannot be a
++            # regular dependency.
++            "include/llvm/MC/*.h",
++            "include/llvm/TargetParser/SubtargetFeature.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -829,10 +889,13 @@ gentbl(
+ 
+ cc_library(
+     name = "BitstreamReader",
+-    srcs = glob([
+-        "lib/Bitstream/Reader/*.cpp",
+-        "lib/Bitstream/Reader/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Bitstream/Reader/*.cpp",
++            "lib/Bitstream/Reader/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = [
+         "include/llvm/Bitstream/BitCodeEnums.h",
+         "include/llvm/Bitstream/BitCodes.h",
+@@ -846,9 +909,12 @@ cc_library(
+ 
+ cc_library(
+     name = "BitstreamWriter",
+-    srcs = glob([
+-        "lib/Bitstream/Writer/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Bitstream/Writer/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = [
+         "include/llvm/Bitstream/BitCodeEnums.h",
+         "include/llvm/Bitstream/BitCodes.h",
+@@ -867,6 +933,7 @@ cc_library(
+             "lib/Remarks/*.cpp",
+             "lib/Remarks/*.h",
+         ],
++        allow_empty = True,
+         exclude = ["lib/Remarks/RemarkLinker.cpp"],
+     ),
+     hdrs = glob(
+@@ -964,10 +1031,13 @@ cc_library(
+ 
+ cc_library(
+     name = "MCParser",
+-    srcs = glob([
+-        "lib/MC/MCParser/*.cpp",
+-        "lib/MC/MCParser/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/MC/MCParser/*.cpp",
++            "lib/MC/MCParser/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/MC/MCParser/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -1014,6 +1084,7 @@ cc_library(
+     ]),
+     hdrs = ["include/llvm/TextAPI/DylibReader.h"] + glob(
+         ["lib/TextAPI/BinaryReader/**/*.h"],
++        allow_empty = True,
+     ),
+     copts = llvm_copts,
+     deps = [
+@@ -1075,10 +1146,13 @@ cc_library(
+ 
+ cc_library(
+     name = "ObjectYAML",
+-    srcs = glob([
+-        "lib/ObjectYAML/*.cpp",
+-        "lib/ObjectYAML/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/ObjectYAML/*.cpp",
++            "lib/ObjectYAML/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/ObjectYAML/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -1093,10 +1167,13 @@ cc_library(
+ 
+ cc_library(
+     name = "ProfileData",
+-    srcs = glob([
+-        "lib/ProfileData/*.cpp",
+-        "lib/ProfileData/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/ProfileData/*.cpp",
++            "lib/ProfileData/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/ProfileData/*.h",
+         "include/llvm/ProfileData/*.inc",
+@@ -1117,10 +1194,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Coverage",
+-    srcs = glob([
+-        "lib/ProfileData/Coverage/*.cpp",
+-        "lib/ProfileData/Coverage/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/ProfileData/Coverage/*.cpp",
++            "lib/ProfileData/Coverage/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/ProfileData/Coverage/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -1139,6 +1219,7 @@ cc_library(
+             "lib/Analysis/*.h",
+             "lib/Analysis/*.def",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(
+         [
+@@ -1193,10 +1274,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Target",
+-    srcs = glob([
+-        "lib/Target/*.cpp",
+-        "lib/Target/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Target/*.cpp",
++            "lib/Target/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/Target/*.h",
+     ]) + [
+@@ -1229,18 +1313,27 @@ gentbl(
+ 
+ cc_library(
+     name = "TargetParser",
+-    srcs = glob([
+-        "lib/TargetParser/*.cpp",
+-        "lib/TargetParser/*.h",
+-    ]) + select({
+-        "@platforms//os:windows": glob([
+-            "lib/TargetParser/Windows/*.h",
+-            "lib/TargetParser/Windows/*.inc",
+-        ]),
+-        "//conditions:default": glob([
+-            "lib/TargetParser/Unix/*.h",
+-            "lib/TargetParser/Unix/*.inc",
+-        ]),
++    srcs = glob(
++        [
++            "lib/TargetParser/*.cpp",
++            "lib/TargetParser/*.h",
++        ],
++        allow_empty = True,
++    ) + select({
++        "@platforms//os:windows": glob(
++            [
++                "lib/TargetParser/Windows/*.h",
++                "lib/TargetParser/Windows/*.inc",
++            ],
++            allow_empty = True,
++        ),
++        "//conditions:default": glob(
++            [
++                "lib/TargetParser/Unix/*.h",
++                "lib/TargetParser/Unix/*.inc",
++            ],
++            allow_empty = True,
++        ),
+     }),
+     hdrs = glob([
+         "include/llvm/TargetParser/*.h",
+@@ -1260,10 +1353,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DWP",
+-    srcs = glob([
+-        "lib/DWP/*.cpp",
+-        "lib/DWP/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DWP/*.cpp",
++            "lib/DWP/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/DWP/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -1277,10 +1373,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TransformUtils",
+-    srcs = glob([
+-        "lib/Transforms/Utils/*.cpp",
+-        "lib/Transforms/Utils/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Transforms/Utils/*.cpp",
++            "lib/Transforms/Utils/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/Transforms/Utils/*.h"]) + [
+         "include/llvm/Transforms/Utils.h",
+     ],
+@@ -1398,10 +1497,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Scalar",
+-    srcs = glob([
+-        "lib/Transforms/Scalar/*.cpp",
+-        "lib/Transforms/Scalar/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Transforms/Scalar/*.cpp",
++            "lib/Transforms/Scalar/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/Transforms/Scalar/*.h"]) + [
+         "include/llvm/Transforms/Scalar.h",
+     ],
+@@ -1442,9 +1544,12 @@ cc_library(
+ 
+ cc_library(
+     name = "FrontendDebug",
+-    srcs = glob([
+-        "lib/Frontend/Debug/*.cpp",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Frontend/Debug/*.cpp",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/Frontend/Debug/*.h",
+     ]),
+@@ -1538,11 +1643,14 @@ cc_library(
+     srcs = glob([
+         "lib/Frontend/OpenMP/*.cpp",
+     ]),
+-    hdrs = glob([
+-        "include/llvm/Frontend/OpenMP/*.h",
+-        "include/llvm/Frontend/OpenMP/OMP/*.h",
+-        "include/llvm/Frontend/*.h",
+-    ]) + [
++    hdrs = glob(
++        [
++            "include/llvm/Frontend/OpenMP/*.h",
++            "include/llvm/Frontend/OpenMP/OMP/*.h",
++            "include/llvm/Frontend/*.h",
++        ],
++        allow_empty = True,
++    ) + [
+         "include/llvm/Frontend/OpenMP/OMP.h.inc",
+         "include/llvm/Frontend/OpenMP/OMP.inc",
+     ],
+@@ -1601,9 +1709,12 @@ cc_library(
+     ]) + [
+         "include/llvm/Frontend/OpenACC/ACC.inc",
+     ],
+-    hdrs = glob([
+-        "include/llvm/Frontend/OpenACC/*.h",
+-    ]) + ["include/llvm/Frontend/OpenACC/ACC.h.inc"],
++    hdrs = glob(
++        [
++            "include/llvm/Frontend/OpenACC/*.h",
++        ],
++        allow_empty = True,
++    ) + ["include/llvm/Frontend/OpenACC/ACC.h.inc"],
+     copts = llvm_copts,
+     deps = [
+         ":Analysis",
+@@ -1615,10 +1726,13 @@ cc_library(
+ 
+ cc_library(
+     name = "AsmParser",
+-    srcs = glob([
+-        "lib/AsmParser/*.cpp",
+-        "lib/AsmParser/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/AsmParser/*.cpp",
++            "lib/AsmParser/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/AsmParser/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -1631,10 +1745,13 @@ cc_library(
+ 
+ cc_library(
+     name = "IRPrinter",
+-    srcs = glob([
+-        "lib/IRPrinter/*.cpp",
+-        "lib/IRPrinter/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/IRPrinter/*.cpp",
++            "lib/IRPrinter/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/IRPrinter/*.h",
+     ]),
+@@ -1648,10 +1765,13 @@ cc_library(
+ 
+ cc_library(
+     name = "IRReader",
+-    srcs = glob([
+-        "lib/IRReader/*.cpp",
+-        "lib/IRReader/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/IRReader/*.cpp",
++            "lib/IRReader/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/IRReader/*.h",
+     ]) + [
+@@ -1691,10 +1811,13 @@ cc_library(
+ 
+ cc_library(
+     name = "IPO",
+-    srcs = glob([
+-        "lib/Transforms/IPO/*.cpp",
+-        "lib/Transforms/IPO/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Transforms/IPO/*.cpp",
++            "lib/Transforms/IPO/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/Transforms/IPO/*.h",
+     ]) + [
+@@ -1729,10 +1852,13 @@ cc_library(
+ 
+ cc_library(
+     name = "CFGuard",
+-    srcs = glob([
+-        "lib/Transforms/CFGuard/*.cpp",
+-        "lib/Transforms/CFGuard/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Transforms/CFGuard/*.cpp",
++            "lib/Transforms/CFGuard/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = ["include/llvm/Transforms/CFGuard.h"],
+     copts = llvm_copts,
+     deps = [
+@@ -1744,10 +1870,13 @@ cc_library(
+ 
+ cc_library(
+     name = "HipStdPar",
+-    srcs = glob([
+-        "lib/Transforms/HipStdPar/*.cpp",
+-        "lib/Transforms/HipStdPar/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Transforms/HipStdPar/*.cpp",
++            "lib/Transforms/HipStdPar/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = ["include/llvm/Transforms/HipStdPar/HipStdPar.h"],
+     copts = llvm_copts,
+     deps = [
+@@ -1838,10 +1967,13 @@ cc_library(
+         ],
+     ),
+     copts = llvm_copts,
+-    textual_hdrs = glob([
+-        "include/llvm/CodeGen/**/*.def",
+-        "include/llvm/CodeGen/**/*.inc",
+-    ]),
++    textual_hdrs = glob(
++        [
++            "include/llvm/CodeGen/**/*.def",
++            "include/llvm/CodeGen/**/*.inc",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         ":AggressiveInstCombine",
+         ":Analysis",
+@@ -2332,10 +2464,13 @@ gentbl(
+         td_file = "lib/Target/" + target["name"] + "/" + target["short_name"] + ".td",
+         td_srcs = [
+             ":common_target_td_sources",
+-        ] + glob([
+-            "lib/Target/" + target["name"] + "/*.td",
+-            "lib/Target/" + target["name"] + "/GISel/*.td",
+-        ]),
++        ] + glob(
++            [
++                "lib/Target/" + target["name"] + "/*.td",
++                "lib/Target/" + target["name"] + "/GISel/*.td",
++            ],
++            allow_empty = True,
++        ),
+         deps = target.get("tbl_deps", []),
+     )],
+     [cc_library(
+@@ -2355,43 +2490,49 @@ gentbl(
+     # a number of targets due to crisscrossing inclusion of headers.
+     [cc_library(
+         name = target["name"] + "UtilsAndDesc",
+-        srcs = glob([
+-            "lib/Target/" + target["name"] + "/MCTargetDesc/*.cpp",
+-            "lib/Target/" + target["name"] + "/Utils/*.cpp",
+-
+-            # We have to include these headers here as well as in the `hdrs`
+-            # below to allow the `.cpp` files to use file-relative-inclusion to
+-            # find them, even though consumers of this library use inclusion
+-            # relative to the target directory via `includes`. This mixture is
+-            # likely incompatible with header modules.
+-            "lib/Target/" + target["name"] + "/MCTargetDesc/*.h",
+-            "lib/Target/" + target["name"] + "/Utils/*.h",
+-        ]),
+-        hdrs = glob([
+-            "lib/Target/" + target["name"] + "/MCTargetDesc/*.h",
+-            "lib/Target/" + target["name"] + "/Utils/*.h",
+-
+-            # This a bit of a hack to allow us to expose common, internal
+-            # target header files to other libraries within the target via
+-            # target-relative includes. This usage of headers is inherently
+-            # non-modular as there is a mixture of target-relative inclusion
+-            # using this rule and file-relative inclusion using the repeated
+-            # listing of these headers in the `srcs` of subsequent rules.
+-            "lib/Target/" + target["name"] + "/*.h",
+-
+-            # FIXME: The entries below should be `textual_hdrs` instead of
+-            # `hdrs`. That was blocked by `strip_include_prefix`
+-            # (https://github.com/bazelbuild/bazel/issues/12424), which this
+-            # rule no longer uses.
+-            #
+-            # Once that issue is fixed and released, we can switch this to
+-            # `textual_hdrs` and remove the feature disabling the various Bazel
+-            # features (both current and under-development) that motivated the
+-            # distinction between these two.
+-            "lib/Target/" + target["name"] + "/*.def",
+-            "lib/Target/" + target["name"] + "/*.inc",
+-            "lib/Target/" + target["name"] + "/MCTargetDesc/*.def",
+-        ]),
++        srcs = glob(
++            [
++                "lib/Target/" + target["name"] + "/MCTargetDesc/*.cpp",
++                "lib/Target/" + target["name"] + "/Utils/*.cpp",
++
++                # We have to include these headers here as well as in the `hdrs`
++                # below to allow the `.cpp` files to use file-relative-inclusion to
++                # find them, even though consumers of this library use inclusion
++                # relative to the target directory via `includes`. This mixture is
++                # likely incompatible with header modules.
++                "lib/Target/" + target["name"] + "/MCTargetDesc/*.h",
++                "lib/Target/" + target["name"] + "/Utils/*.h",
++            ],
++            allow_empty = True,
++        ),
++        hdrs = glob(
++            [
++                "lib/Target/" + target["name"] + "/MCTargetDesc/*.h",
++                "lib/Target/" + target["name"] + "/Utils/*.h",
++
++                # This a bit of a hack to allow us to expose common, internal
++                # target header files to other libraries within the target via
++                # target-relative includes. This usage of headers is inherently
++                # non-modular as there is a mixture of target-relative inclusion
++                # using this rule and file-relative inclusion using the repeated
++                # listing of these headers in the `srcs` of subsequent rules.
++                "lib/Target/" + target["name"] + "/*.h",
++
++                # FIXME: The entries below should be `textual_hdrs` instead of
++                # `hdrs`. That was blocked by `strip_include_prefix`
++                # (https://github.com/bazelbuild/bazel/issues/12424), which this
++                # rule no longer uses.
++                #
++                # Once that issue is fixed and released, we can switch this to
++                # `textual_hdrs` and remove the feature disabling the various Bazel
++                # features (both current and under-development) that motivated the
++                # distinction between these two.
++                "lib/Target/" + target["name"] + "/*.def",
++                "lib/Target/" + target["name"] + "/*.inc",
++                "lib/Target/" + target["name"] + "/MCTargetDesc/*.def",
++            ],
++            allow_empty = True,
++        ),
+         copts = llvm_copts,
+         features = [
+             "-parse_headers",
+@@ -2421,21 +2562,27 @@ gentbl(
+     )],
+     [cc_library(
+         name = target["name"] + "CodeGen",
+-        srcs = glob([
+-            "lib/Target/" + target["name"] + "/GISel/*.cpp",
+-            "lib/Target/" + target["name"] + "/GISel/*.h",
+-            "lib/Target/" + target["name"] + "/*.cpp",
+-            "lib/Target/" + target["name"] + "/*.h",
+-        ]),
++        srcs = glob(
++            [
++                "lib/Target/" + target["name"] + "/GISel/*.cpp",
++                "lib/Target/" + target["name"] + "/GISel/*.h",
++                "lib/Target/" + target["name"] + "/*.cpp",
++                "lib/Target/" + target["name"] + "/*.h",
++            ],
++            allow_empty = True,
++        ),
+         hdrs = ["lib/Target/" + target["name"] + "/" + target["short_name"] + ".h"],
+         copts = llvm_copts,
+         features = ["-layering_check"],
+         # See the `includes` note on the `UtilsAndDesc` rule above.
+         includes = ["lib/Target/" + target["name"]],
+-        textual_hdrs = glob([
+-            "lib/Target/" + target["name"] + "/*.def",
+-            "lib/Target/" + target["name"] + "/*.inc",
+-        ]),
++        textual_hdrs = glob(
++            [
++                "lib/Target/" + target["name"] + "/*.def",
++                "lib/Target/" + target["name"] + "/*.inc",
++            ],
++            allow_empty = True,
++        ),
+         deps = [
+             ":Analysis",
+             ":BinaryFormat",
+@@ -2460,10 +2607,13 @@ gentbl(
+     )],
+     [cc_library(
+         name = target["name"] + "AsmParser",
+-        srcs = glob([
+-            "lib/Target/" + target["name"] + "/AsmParser/*.cpp",
+-            "lib/Target/" + target["name"] + "/AsmParser/*.h",
+-        ]),
++        srcs = glob(
++            [
++                "lib/Target/" + target["name"] + "/AsmParser/*.cpp",
++                "lib/Target/" + target["name"] + "/AsmParser/*.h",
++            ],
++            allow_empty = True,
++        ),
+         copts = llvm_copts,
+         deps = [
+             ":BinaryFormat",
+@@ -2494,9 +2644,12 @@ gentbl(
+         # `textual_hdrs` and remove the feature disabling the various Bazel
+         # features (both current and under-development) that motivated the
+         # distinction between these two.
+-        hdrs = glob([
+-            "lib/Target/" + target["name"] + "/Disassembler/*.h",
+-        ]),
++        hdrs = glob(
++            [
++                "lib/Target/" + target["name"] + "/Disassembler/*.h",
++            ],
++            allow_empty = True,
++        ),
+         features = [
+             "-parse_headers",
+             "-header_modules",
+@@ -2505,11 +2658,14 @@ gentbl(
+     )],
+     [cc_library(
+         name = target["name"] + "Disassembler",
+-        srcs = glob([
+-            "lib/Target/" + target["name"] + "/Disassembler/*.cpp",
+-            "lib/Target/" + target["name"] + "/Disassembler/*.c",
+-            "lib/Target/" + target["name"] + "/Disassembler/*.h",
+-        ]),
++        srcs = glob(
++            [
++                "lib/Target/" + target["name"] + "/Disassembler/*.cpp",
++                "lib/Target/" + target["name"] + "/Disassembler/*.c",
++                "lib/Target/" + target["name"] + "/Disassembler/*.h",
++            ],
++            allow_empty = True,
++        ),
+         copts = llvm_copts,
+         features = ["-layering_check"],
+         deps = [
+@@ -2527,11 +2683,14 @@ gentbl(
+     )],
+     [cc_library(
+         name = target["name"] + "TargetMCA",
+-        srcs = glob([
+-            "lib/Target/" + target["name"] + "/MCA/*.cpp",
+-            "lib/Target/" + target["name"] + "/MCA/*.c",
+-            "lib/Target/" + target["name"] + "/MCA/*.h",
+-        ]),
++        srcs = glob(
++            [
++                "lib/Target/" + target["name"] + "/MCA/*.cpp",
++                "lib/Target/" + target["name"] + "/MCA/*.c",
++                "lib/Target/" + target["name"] + "/MCA/*.h",
++            ],
++            allow_empty = True,
++        ),
+         copts = llvm_copts,
+         features = ["-layering_check"],
+         deps = [
+@@ -2591,13 +2750,19 @@ cc_library(
+ 
+ cc_library(
+     name = "MLPolicies",
+-    srcs = glob([
+-        "lib/Analysis/ML/*.cpp",
+-        "lib/Analysis/ML/*.h",
+-    ]),
+-    hdrs = glob([
+-        "include/llvm/Analysis/ML/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Analysis/ML/*.cpp",
++            "lib/Analysis/ML/*.h",
++        ],
++        allow_empty = True,
++    ),
++    hdrs = glob(
++        [
++            "include/llvm/Analysis/ML/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     deps = [
+         ":Analysis",
+@@ -2608,10 +2773,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Passes",
+-    srcs = glob([
+-        "lib/Passes/*.cpp",
+-        "lib/Passes/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Passes/*.cpp",
++            "lib/Passes/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/Passes/*.h"]) + ["include/llvm-c/Transforms/PassBuilder.h"],
+     copts = llvm_copts,
+     deps = [
+@@ -2641,10 +2809,13 @@ cc_library(
+ 
+ cc_library(
+     name = "LTO",
+-    srcs = glob([
+-        "lib/LTO/*.cpp",
+-        "lib/LTO/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/LTO/*.cpp",
++            "lib/LTO/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/LTO/*.h",
+         "include/llvm/LTO/legacy/*.h",
+@@ -2681,14 +2852,17 @@ cc_library(
+ 
+ cc_library(
+     name = "ExecutionEngine",
+-    srcs = glob([
+-        "lib/ExecutionEngine/*.cpp",
+-        "lib/ExecutionEngine/*.h",
+-        "lib/ExecutionEngine/RuntimeDyld/*.cpp",
+-        "lib/ExecutionEngine/RuntimeDyld/*.h",
+-        "lib/ExecutionEngine/RuntimeDyld/Targets/*.cpp",
+-        "lib/ExecutionEngine/RuntimeDyld/Targets/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/ExecutionEngine/*.cpp",
++            "lib/ExecutionEngine/*.h",
++            "lib/ExecutionEngine/RuntimeDyld/*.cpp",
++            "lib/ExecutionEngine/RuntimeDyld/*.h",
++            "lib/ExecutionEngine/RuntimeDyld/Targets/*.cpp",
++            "lib/ExecutionEngine/RuntimeDyld/Targets/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(
+         [
+             "include/llvm/ExecutionEngine/*.h",
+@@ -2795,16 +2969,22 @@ cc_library(
+ 
+ cc_library(
+     name = "OrcJIT",
+-    srcs = glob([
+-        "lib/ExecutionEngine/Orc/*.cpp",
+-        "lib/ExecutionEngine/Orc/*.h",
+-    ]),
+-    hdrs = glob([
+-        "include/llvm/ExecutionEngine/Orc/*.h",
+-        "include/llvm/ExecutionEngine/Orc/RPC/*.h",
+-    ]) + [
+-        "include/llvm-c/LLJIT.h",
+-        "include/llvm-c/Orc.h",
++    srcs = glob(
++        [
++            "lib/ExecutionEngine/Orc/*.cpp",
++            "lib/ExecutionEngine/Orc/*.h",
++        ],
++        allow_empty = True,
++    ),
++    hdrs = glob(
++        [
++            "include/llvm/ExecutionEngine/Orc/*.h",
++            "include/llvm/ExecutionEngine/Orc/RPC/*.h",
++        ],
++        allow_empty = True,
++    ) + [
++        "include/llvm-c/LLJIT.h",
++        "include/llvm-c/Orc.h",
+         "include/llvm-c/OrcEE.h",
+     ],
+     copts = llvm_copts,
+@@ -2923,10 +3103,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DWARFLinker",
+-    srcs = glob([
+-        "lib/DWARFLinker/Classic/*.cpp",
+-        "lib/DWARFLinker/Classic/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DWARFLinker/Classic/*.cpp",
++            "lib/DWARFLinker/Classic/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/DWARFLinker/Classic/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -2944,10 +3127,13 @@ cc_library(
+ 
+ cc_library(
+     name = "DWARFLinkerBase",
+-    srcs = glob([
+-        "lib/DWARFLinker/*.cpp",
+-        "lib/DWARFLinker/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/DWARFLinker/*.cpp",
++            "lib/DWARFLinker/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/DWARFLinker/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -3035,10 +3221,13 @@ cc_library(
+ 
+ cc_library(
+     name = "InterfaceStub",
+-    srcs = glob([
+-        "lib/InterfaceStub/*.cpp",
+-        "lib/InterfaceStub/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/InterfaceStub/*.cpp",
++            "lib/InterfaceStub/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/InterfaceStub/*.h",
+     ]),
+@@ -3086,10 +3275,13 @@ cc_library(
+ 
+ cc_library(
+     name = "MCA",
+-    srcs = glob([
+-        "lib/MCA/**/*.cpp",
+-        "lib/MCA/**/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/MCA/**/*.cpp",
++            "lib/MCA/**/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/llvm/MCA/**/*.h",
+     ]),
+@@ -3104,19 +3296,25 @@ cc_library(
+ 
+ cc_library(
+     name = "llvm-mca-headers",
+-    hdrs = glob([
+-        "tools/llvm-mca/*.h",
+-        "tools/llvm-mca/Views/*.h",
+-    ]),
++    hdrs = glob(
++        [
++            "tools/llvm-mca/*.h",
++            "tools/llvm-mca/Views/*.h",
++        ],
++        allow_empty = True,
++    ),
+     strip_include_prefix = "tools/llvm-mca",
+ )
+ 
+ cc_library(
+     name = "XRay",
+-    srcs = glob([
+-        "lib/XRay/*.cpp",
+-        "lib/XRay/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/XRay/*.cpp",
++            "lib/XRay/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/XRay/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -3172,21 +3370,24 @@ cc_library(
+ 
+ cc_library(
+     name = "Exegesis",
+-    srcs = glob([
+-        "tools/llvm-exegesis/lib/*.cpp",
+-        # We have to include these headers here as well as in the `hdrs` below
+-        # to allow the `.cpp` files to use file-relative-inclusion to find
+-        # them, even though consumers of this library use inclusion relative to
+-        # `tools/llvm-exegesis/lib` with the `strip_includes_prefix` of this
+-        # library. This mixture appears to be incompatible with header modules.
+-        "tools/llvm-exegesis/lib/*.h",
+-    ] + [
+-        "tools/llvm-exegesis/lib/{}/*.cpp".format(t)
+-        for t in llvm_target_exegesis
+-    ] + [
+-        "tools/llvm-exegesis/lib/{}/*.h".format(t)
+-        for t in llvm_target_exegesis
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-exegesis/lib/*.cpp",
++            # We have to include these headers here as well as in the `hdrs` below
++            # to allow the `.cpp` files to use file-relative-inclusion to find
++            # them, even though consumers of this library use inclusion relative to
++            # `tools/llvm-exegesis/lib` with the `strip_includes_prefix` of this
++            # library. This mixture appears to be incompatible with header modules.
++            "tools/llvm-exegesis/lib/*.h",
++        ] + [
++            "tools/llvm-exegesis/lib/{}/*.cpp".format(t)
++            for t in llvm_target_exegesis
++        ] + [
++            "tools/llvm-exegesis/lib/{}/*.h".format(t)
++            for t in llvm_target_exegesis
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["tools/llvm-exegesis/lib/*.h"]),
+     copts = llvm_copts,
+     features = [
+@@ -3270,10 +3471,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llc",
+-    srcs = glob([
+-        "tools/llc/*.cpp",
+-        "tools/llc/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llc/*.cpp",
++            "tools/llc/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3356,10 +3560,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-ar",
+-    srcs = glob([
+-        "tools/llvm-ar/*.cpp",
+-        "tools/llvm-ar/*.h",
+-    ]) + ["llvm-ar-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-ar/*.cpp",
++            "tools/llvm-ar/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-ar-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3394,10 +3601,13 @@ binary_alias(
+ 
+ cc_binary(
+     name = "llvm-as",
+-    srcs = glob([
+-        "tools/llvm-as/*.cpp",
+-        "tools/llvm-as/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-as/*.cpp",
++            "tools/llvm-as/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3411,10 +3621,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-bcanalyzer",
+-    srcs = glob([
+-        "tools/llvm-bcanalyzer/*.cpp",
+-        "tools/llvm-bcanalyzer/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-bcanalyzer/*.cpp",
++            "tools/llvm-bcanalyzer/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3498,10 +3711,13 @@ gentbl(
+ 
+ cc_binary(
+     name = "llvm-cvtres",
+-    srcs = glob([
+-        "tools/llvm-cvtres/*.cpp",
+-        "tools/llvm-cvtres/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-cvtres/*.cpp",
++            "tools/llvm-cvtres/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3532,10 +3748,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-cxxmap",
+-    srcs = glob([
+-        "tools/llvm-cxxmap/*.cpp",
+-        "tools/llvm-cxxmap/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-cxxmap/*.cpp",
++            "tools/llvm-cxxmap/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3567,10 +3786,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-cxxfilt",
+-    srcs = glob([
+-        "tools/llvm-cxxfilt/*.cpp",
+-        "tools/llvm-cxxfilt/*.h",
+-    ]) + ["llvm-cxxfilt-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-cxxfilt/*.cpp",
++            "tools/llvm-cxxfilt/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-cxxfilt-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3600,10 +3822,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-debuginfod-find",
+-    srcs = glob([
+-        "tools/llvm-debuginfod-find/*.cpp",
+-        "tools/llvm-debuginfod-find/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-debuginfod-find/*.cpp",
++            "tools/llvm-debuginfod-find/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3617,10 +3842,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-dis",
+-    srcs = glob([
+-        "tools/llvm-dis/*.cpp",
+-        "tools/llvm-dis/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-dis/*.cpp",
++            "tools/llvm-dis/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3712,10 +3940,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-dwp",
+-    srcs = glob([
+-        "tools/llvm-dwp/*.cpp",
+-        "tools/llvm-dwp/*.h",
+-    ]) + ["llvm-dwp-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-dwp/*.cpp",
++            "tools/llvm-dwp/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-dwp-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3752,10 +3983,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-extract",
+-    srcs = glob([
+-        "tools/llvm-extract/*.cpp",
+-        "tools/llvm-extract/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-extract/*.cpp",
++            "tools/llvm-extract/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3794,10 +4028,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-gsymutil",
+-    srcs = glob([
+-        "tools/llvm-gsymutil/*.cpp",
+-        "tools/llvm-gsymutil/*.h",
+-    ]) + ["llvm-gsymutil-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-gsymutil/*.cpp",
++            "tools/llvm-gsymutil/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-gsymutil-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -3946,10 +4183,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-link",
+-    srcs = glob([
+-        "tools/llvm-link/*.cpp",
+-        "tools/llvm-link/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-link/*.cpp",
++            "tools/llvm-link/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4011,10 +4251,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-lto",
+-    srcs = glob([
+-        "tools/llvm-lto/*.cpp",
+-        "tools/llvm-lto/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-lto/*.cpp",
++            "tools/llvm-lto/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4034,10 +4277,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-lto2",
+-    srcs = glob([
+-        "tools/llvm-lto2/*.cpp",
+-        "tools/llvm-lto2/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-lto2/*.cpp",
++            "tools/llvm-lto2/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4180,10 +4426,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-mt",
+-    srcs = glob([
+-        "tools/llvm-mt/*.cpp",
+-        "tools/llvm-mt/*.h",
+-    ]) + ["llvm-mt-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-mt/*.cpp",
++            "tools/llvm-mt/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-mt-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4217,10 +4466,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-nm",
+-    srcs = glob([
+-        "tools/llvm-nm/*.cpp",
+-        "tools/llvm-nm/*.h",
+-    ]) + ["llvm-nm-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-nm/*.cpp",
++            "tools/llvm-nm/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-nm-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4301,10 +4553,13 @@ gentbl(
+ 
+ cc_binary(
+     name = "llvm-stress",
+-    srcs = glob([
+-        "tools/llvm-stress/*.cpp",
+-        "tools/llvm-stress/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-stress/*.cpp",
++            "tools/llvm-stress/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4478,10 +4733,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-profdata",
+-    srcs = glob([
+-        "tools/llvm-profdata/*.cpp",
+-        "tools/llvm-profdata/*.h",
+-    ]) + ["llvm-profdata-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-profdata/*.cpp",
++            "tools/llvm-profdata/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-profdata-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4662,10 +4920,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-rtdyld",
+-    srcs = glob([
+-        "tools/llvm-rtdyld/*.cpp",
+-        "tools/llvm-rtdyld/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-rtdyld/*.cpp",
++            "tools/llvm-rtdyld/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4704,10 +4965,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-size",
+-    srcs = glob([
+-        "tools/llvm-size/*.cpp",
+-        "tools/llvm-size/*.h",
+-    ]) + ["llvm-size-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-size/*.cpp",
++            "tools/llvm-size/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-size-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4720,10 +4984,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-split",
+-    srcs = glob([
+-        "tools/llvm-split/*.cpp",
+-        "tools/llvm-split/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-split/*.cpp",
++            "tools/llvm-split/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4750,10 +5017,13 @@ gentbl(
+ 
+ cc_binary(
+     name = "llvm-strings",
+-    srcs = glob([
+-        "tools/llvm-strings/*.cpp",
+-        "tools/llvm-strings/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-strings/*.cpp",
++            "tools/llvm-strings/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4787,10 +5057,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "llvm-symbolizer",
+-    srcs = glob([
+-        "tools/llvm-symbolizer/*.cpp",
+-        "tools/llvm-symbolizer/*.h",
+-    ]) + ["llvm-symbolizer-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/llvm-symbolizer/*.cpp",
++            "tools/llvm-symbolizer/*.h",
++        ],
++        allow_empty = True,
++    ) + ["llvm-symbolizer-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4813,10 +5086,13 @@ binary_alias(
+ 
+ cc_binary(
+     name = "llvm-undname",
+-    srcs = glob([
+-        "tools/llvm-undname/*.cpp",
+-        "tools/llvm-undname/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-undname/*.cpp",
++            "tools/llvm-undname/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4827,11 +5103,14 @@ cc_binary(
+ 
+ cc_binary(
+     name = "llvm-xray",
+-    srcs = glob([
+-        "tools/llvm-xray/*.cpp",
+-        "tools/llvm-xray/*.cc",
+-        "tools/llvm-xray/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-xray/*.cpp",
++            "tools/llvm-xray/*.cc",
++            "tools/llvm-xray/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4905,10 +5184,13 @@ expand_template(
+ 
+ cc_binary(
+     name = "sancov",
+-    srcs = glob([
+-        "tools/sancov/*.cpp",
+-        "tools/sancov/*.h",
+-    ]) + ["sancov-driver.cpp"],
++    srcs = glob(
++        [
++            "tools/sancov/*.cpp",
++            "tools/sancov/*.h",
++        ],
++        allow_empty = True,
++    ) + ["sancov-driver.cpp"],
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4928,10 +5210,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "sanstats",
+-    srcs = glob([
+-        "tools/sanstats/*.cpp",
+-        "tools/sanstats/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/sanstats/*.cpp",
++            "tools/sanstats/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -4943,10 +5228,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "split-file",
+-    srcs = glob([
+-        "utils/split-file/*.cpp",
+-        "utils/split-file/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "utils/split-file/*.cpp",
++            "utils/split-file/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -5009,10 +5297,13 @@ cc_library(
+ cc_library(
+     name = "TestingSupport",
+     testonly = True,
+-    srcs = glob([
+-        "lib/Testing/Support/*.cpp",
+-        "lib/Testing/Support/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Testing/Support/*.cpp",
++            "lib/Testing/Support/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/llvm/Testing/Support/*.h"]),
+     copts = llvm_copts,
+     deps = [
+@@ -5038,10 +5329,13 @@ cc_library(
+ cc_binary(
+     name = "FileCheck",
+     testonly = True,
+-    srcs = glob([
+-        "utils/FileCheck/*.cpp",
+-        "utils/FileCheck/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "utils/FileCheck/*.cpp",
++            "utils/FileCheck/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -5084,10 +5378,13 @@ cc_binary(
+ cc_binary(
+     name = "count",
+     testonly = True,
+-    srcs = glob([
+-        "utils/count/*.c",
+-        "utils/count/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "utils/count/*.c",
++            "utils/count/*.h",
++        ],
++        allow_empty = True,
++    ),
+     stamp = 0,
+     deps = [":Support"],
+ )
+@@ -5095,10 +5392,13 @@ cc_binary(
+ cc_binary(
+     name = "lli-child-target",
+     testonly = True,
+-    srcs = glob([
+-        "tools/lli/ChildTarget/*.cpp",
+-        "tools/lli/ChildTarget/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/lli/ChildTarget/*.cpp",
++            "tools/lli/ChildTarget/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     # The tests load code into this binary that expect to see symbols
+     # from libstdc++ such as __cxa_begin_catch and _ZTIi. The latter
+@@ -5162,10 +5462,13 @@ cc_binary(
+ cc_binary(
+     name = "llvm-diff",
+     testonly = True,
+-    srcs = glob([
+-        "tools/llvm-diff/*.cpp",
+-        "tools/llvm-diff/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-diff/*.cpp",
++            "tools/llvm-diff/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -5180,10 +5483,13 @@ cc_binary(
+ cc_binary(
+     name = "llvm-isel-fuzzer",
+     testonly = True,
+-    srcs = glob([
+-        "tools/llvm-isel-fuzzer/*.cpp",
+-        "tools/llvm-isel-fuzzer/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-isel-fuzzer/*.cpp",
++            "tools/llvm-isel-fuzzer/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -5226,10 +5532,13 @@ sh_binary(
+ cc_binary(
+     name = "not",
+     testonly = True,
+-    srcs = glob([
+-        "utils/not/*.cpp",
+-        "utils/not/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "utils/not/*.cpp",
++            "utils/not/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [":Support"],
+@@ -5306,10 +5615,13 @@ gentbl(
+ cc_binary(
+     name = "llvm-tli-checker",
+     testonly = True,
+-    srcs = glob([
+-        "tools/llvm-tli-checker/*.cpp",
+-        "tools/llvm-tli-checker/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/llvm-tli-checker/*.cpp",
++            "tools/llvm-tli-checker/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -5353,10 +5665,13 @@ cc_binary(
+ 
+ cc_binary(
+     name = "verify-uselistorder",
+-    srcs = glob([
+-        "tools/verify-uselistorder/*.cpp",
+-        "tools/verify-uselistorder/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/verify-uselistorder/*.cpp",
++            "tools/verify-uselistorder/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+@@ -5373,10 +5688,13 @@ cc_binary(
+ cc_binary(
+     name = "yaml2obj",
+     testonly = True,
+-    srcs = glob([
+-        "tools/yaml2obj/*.cpp",
+-        "tools/yaml2obj/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "tools/yaml2obj/*.cpp",
++            "tools/yaml2obj/*.h",
++        ],
++        allow_empty = True,
++    ),
+     copts = llvm_copts,
+     stamp = 0,
+     deps = [
+diff --git a/mlir/BUILD.bazel b/mlir/BUILD.bazel
+--- a/mlir/BUILD.bazel
++++ b/mlir/BUILD.bazel
+@@ -316,14 +316,17 @@ cc_library(
+ 
+ cc_library(
+     name = "IR",
+-    srcs = glob([
+-        "lib/IR/*.cpp",
+-        "lib/IR/*.h",
+-        "lib/IR/PDL/*.cpp",
+-        "lib/Bytecode/Reader/*.h",
+-        "lib/Bytecode/Writer/*.h",
+-        "lib/Bytecode/*.h",
+-    ]) + [
++    srcs = glob(
++        [
++            "lib/IR/*.cpp",
++            "lib/IR/*.h",
++            "lib/IR/PDL/*.cpp",
++            "lib/Bytecode/Reader/*.h",
++            "lib/Bytecode/Writer/*.h",
++            "lib/Bytecode/*.h",
++        ],
++        allow_empty = True,
++    ) + [
+         "include/mlir/IR/PDLPatternMatch.h.inc",
+         "lib/Bytecode/BytecodeOpInterface.cpp",
+     ],
+@@ -1521,6 +1524,7 @@ cc_library(
+             "lib/Dialect/AMDGPU/Transforms/*.cpp",
+             "lib/Dialect/AMDGPU/Transforms/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(["include/mlir/Dialect/AMDGPU/Transforms/*.h"]),
+     includes = ["include"],
+@@ -1653,10 +1657,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "TargetCpp",
+-    srcs = glob([
+-        "lib/Target/Cpp/*.cpp",
+-        "lib/Target/Cpp/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Target/Cpp/*.cpp",
++            "lib/Target/Cpp/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Target/Cpp/*.h"]),
+     deps = [
+         ":ArithDialect",
+@@ -1837,10 +1844,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "ArmNeon2dToIntr",
+-    srcs = glob([
+-        "lib/Conversion/ArmNeon2dToIntr/*.cpp",
+-        "lib/Conversion/ArmNeon2dToIntr/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/ArmNeon2dToIntr/*.cpp",
++            "lib/Conversion/ArmNeon2dToIntr/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/ArmNeon2dToIntr/*.h",
+     ]),
+@@ -2704,10 +2714,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "SCFTransforms",
+-    srcs = glob([
+-        "lib/Dialect/SCF/Transforms/*.cpp",
+-        "lib/Dialect/SCF/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/SCF/Transforms/*.cpp",
++            "lib/Dialect/SCF/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/SCF/Transforms/*.h",
+     ]),
+@@ -3047,12 +3060,15 @@ cc_library(
+ 
+ cc_library(
+     name = "SparseTensorTransforms",
+-    srcs = glob([
+-        "lib/Dialect/SparseTensor/Transforms/*.cpp",
+-        "lib/Dialect/SparseTensor/Transforms/*.h",
+-        "lib/Dialect/SparseTensor/Transforms/Utils/*.cpp",
+-        "lib/Dialect/SparseTensor/Transforms/Utils/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/SparseTensor/Transforms/*.cpp",
++            "lib/Dialect/SparseTensor/Transforms/*.h",
++            "lib/Dialect/SparseTensor/Transforms/Utils/*.cpp",
++            "lib/Dialect/SparseTensor/Transforms/Utils/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = [
+         "include/mlir/Dialect/SparseTensor/Transforms/BufferizableOpInterfaceImpl.h",
+         "include/mlir/Dialect/SparseTensor/Transforms/Passes.h",
+@@ -3279,10 +3295,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "MeshTransforms",
+-    srcs = glob([
+-        "lib/Dialect/Mesh/Transforms/*.cpp",
+-        "lib/Dialect/Mesh/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Mesh/Transforms/*.cpp",
++            "lib/Dialect/Mesh/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Dialect/Mesh/Transforms/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -3570,10 +3589,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "Dialect",
+-    srcs = glob([
+-        "lib/Dialect/*.cpp",
+-        "lib/Dialect/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/*.cpp",
++            "lib/Dialect/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/*.h",
+     ]),
+@@ -3612,10 +3634,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "DialectUtils",
+-    srcs = glob([
+-        "lib/Dialect/Utils/*.cpp",
+-        "lib/Dialect/Utils/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Utils/*.cpp",
++            "lib/Dialect/Utils/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/Utils/*.h",
+     ]),
+@@ -3631,10 +3656,13 @@ cc_library(
+ 
+ cc_library(
+     name = "AffineDialect",
+-    srcs = glob([
+-        "lib/Dialect/Affine/IR/*.cpp",
+-        "lib/Dialect/Affine/IR/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Affine/IR/*.cpp",
++            "lib/Dialect/Affine/IR/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/Affine/IR/*.h",
+     ]),
+@@ -3749,10 +3777,13 @@ cc_library(
+ 
+ cc_library(
+     name = "AffineAnalysis",
+-    srcs = glob([
+-        "lib/Dialect/Affine/Analysis/*.cpp",
+-        "lib/Dialect/Affine/Analysis/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Affine/Analysis/*.cpp",
++            "lib/Dialect/Affine/Analysis/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Dialect/Affine/Analysis/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -3776,6 +3807,7 @@ cc_library(
+             "lib/Dialect/Affine/Utils/*.cpp",
+             "lib/Dialect/Affine/Utils/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = [
+         "include/mlir/Dialect/Affine/LoopFusionUtils.h",
+@@ -3819,10 +3851,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "AffineTransforms",
+-    srcs = glob([
+-        "lib/Dialect/Affine/Transforms/*.cpp",
+-        "lib/Dialect/Affine/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Affine/Transforms/*.cpp",
++            "lib/Dialect/Affine/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = [
+         "include/mlir/Dialect/Affine/Passes.h",
+         "include/mlir/Dialect/Affine/Transforms/Transforms.h",
+@@ -3956,10 +3991,13 @@ cc_library(
+ 
+ cc_library(
+     name = "AsyncToLLVM",
+-    srcs = glob([
+-        "lib/Conversion/AsyncToLLVM/*.cpp",
+-        "lib/Conversion/AsyncToLLVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/AsyncToLLVM/*.cpp",
++            "lib/Conversion/AsyncToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Conversion/AsyncToLLVM/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -3982,10 +4020,13 @@ cc_library(
+ 
+ cc_library(
+     name = "AffineToStandard",
+-    srcs = glob([
+-        "lib/Conversion/AffineToStandard/*.cpp",
+-        "lib/Conversion/AffineToStandard/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/AffineToStandard/*.cpp",
++            "lib/Conversion/AffineToStandard/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Conversion/AffineToStandard/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -4009,13 +4050,19 @@ cc_library(
+ # we don't split out the registration library for it.
+ cc_library(
+     name = "SDBM",
+-    srcs = glob([
+-        "lib/Dialect/SDBM/*.cpp",
+-        "lib/Dialect/SDBM/*.h",
+-    ]),
+-    hdrs = glob([
+-        "include/mlir/Dialect/SDBM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/SDBM/*.cpp",
++            "lib/Dialect/SDBM/*.h",
++        ],
++        allow_empty = True,
++    ),
++    hdrs = glob(
++        [
++            "include/mlir/Dialect/SDBM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     includes = ["include"],
+     deps = [
+         ":IR",
+@@ -4031,6 +4078,7 @@ cc_library(
+             "lib/Dialect/SCF/IR/*.cpp",
+             "lib/Dialect/SCF/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(
+         [
+@@ -4320,10 +4368,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "ShapeToStandard",
+-    srcs = glob([
+-        "lib/Conversion/ShapeToStandard/*.cpp",
+-        "lib/Conversion/ShapeToStandard/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/ShapeToStandard/*.cpp",
++            "lib/Conversion/ShapeToStandard/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = ["include/mlir/Conversion/ShapeToStandard/ShapeToStandard.h"],
+     includes = ["include"],
+     deps = [
+@@ -4360,10 +4411,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "ShapeTransforms",
+-    srcs = glob([
+-        "lib/Dialect/Shape/Transforms/*.cpp",
+-        "lib/Dialect/Shape/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Shape/Transforms/*.cpp",
++            "lib/Dialect/Shape/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = [
+         "include/mlir/Dialect/Shape/Analysis/ShapeMappingAnalysis.h",
+         "include/mlir/Dialect/Shape/Transforms/BufferizableOpInterfaceImpl.h",
+@@ -4446,6 +4500,7 @@ cc_library(
+             "lib/Dialect/ControlFlow/IR/*.cpp",
+             "lib/Dialect/ControlFlow/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob([
+         "include/mlir/Dialect/ControlFlow/IR/*.h",
+@@ -4490,11 +4545,15 @@ cc_library(
+             "lib/Dialect/Func/IR/*.h",
+             "lib/Dialect/Func/Utils/*.cpp",
+         ],
++        allow_empty = True,
+     ),
+-    hdrs = glob([
+-        "include/mlir/Dialect/Func/IR/*.h",
+-        "include/mlir/Dialect/Func/Utils/*.h",
+-    ]) + ["include/mlir/Transforms/InliningUtils.h"],
++    hdrs = glob(
++        [
++            "include/mlir/Dialect/Func/IR/*.h",
++            "include/mlir/Dialect/Func/Utils/*.h",
++        ],
++        allow_empty = True,
++    ) + ["include/mlir/Transforms/InliningUtils.h"],
+     includes = ["include"],
+     deps = [
+         ":ArithDialect",
+@@ -4635,10 +4694,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "FuncTransforms",
+-    srcs = glob([
+-        "lib/Dialect/Func/Transforms/*.cpp",
+-        "lib/Dialect/Func/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Func/Transforms/*.cpp",
++            "lib/Dialect/Func/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Dialect/Func/Transforms/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -4772,6 +4834,7 @@ cc_library(
+             "lib/Dialect/Vector/Transforms/*.cpp",
+             "lib/Dialect/Vector/Transforms/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob([
+         "include/mlir/Dialect/Vector/Transforms/*.h",
+@@ -4834,10 +4897,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Support",
+-    srcs = glob([
+-        "lib/Support/*.cpp",
+-        "lib/Support/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Support/*.cpp",
++            "lib/Support/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Support/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -4848,14 +4914,17 @@ cc_library(
+ 
+ cc_library(
+     name = "Debug",
+-    srcs = glob([
+-        "lib/Debug/*.cpp",
+-        "lib/Debug/*.h",
+-        "lib/Debug/BreakpointManagers/*.cpp",
+-        "lib/Debug/BreakpointManagers/*.h",
+-        "lib/Debug/Observers/*.cpp",
+-        "lib/Debug/Observers/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Debug/*.cpp",
++            "lib/Debug/*.h",
++            "lib/Debug/BreakpointManagers/*.cpp",
++            "lib/Debug/BreakpointManagers/*.h",
++            "lib/Debug/Observers/*.cpp",
++            "lib/Debug/Observers/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Debug/*.h",
+         "include/mlir/Debug/BreakpointManagers/*.h",
+@@ -4899,6 +4968,7 @@ cc_library(
+             "lib/Tools/mlir-lsp-server/lsp/*.cpp",
+             "lib/Tools/mlir-lsp-server/lsp/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(
+         ["include/mlir/Tools/mlir-lsp-server/*.h"],
+@@ -4969,11 +5039,14 @@ cc_library(
+ 
+ cc_library(
+     name = "BytecodeReader",
+-    srcs = glob([
+-        "lib/Bytecode/Reader/*.cpp",
+-        "lib/Bytecode/Reader/*.h",
+-        "lib/Bytecode/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Bytecode/Reader/*.cpp",
++            "lib/Bytecode/Reader/*.h",
++            "lib/Bytecode/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Bytecode/*.h",
+     ]),
+@@ -4989,11 +5062,14 @@ cc_library(
+ 
+ cc_library(
+     name = "BytecodeWriter",
+-    srcs = glob([
+-        "lib/Bytecode/Writer/*.cpp",
+-        "lib/Bytecode/Writer/*.h",
+-        "lib/Bytecode/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Bytecode/Writer/*.cpp",
++            "lib/Bytecode/Writer/*.h",
++            "lib/Bytecode/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Bytecode/*.h",
+     ]),
+@@ -5008,10 +5084,13 @@ cc_library(
+ 
+ cc_library(
+     name = "Parser",
+-    srcs = glob([
+-        "lib/Parser/*.cpp",
+-        "lib/Parser/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Parser/*.cpp",
++            "lib/Parser/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Parser/*.h",
+     ]),
+@@ -5128,10 +5207,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "LLVMIRTransforms",
+-    srcs = glob([
+-        "lib/Dialect/LLVMIR/Transforms/*.cpp",
+-        "lib/Dialect/LLVMIR/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/LLVMIR/Transforms/*.cpp",
++            "lib/Dialect/LLVMIR/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -5285,6 +5367,7 @@ cc_library(
+             "lib/Dialect/GPU/IR/*.cpp",
+             "lib/Dialect/GPU/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(["include/mlir/Dialect/GPU/IR/*.h"]),
+     includes = ["include"],
+@@ -5377,6 +5460,7 @@ cc_library(
+             "lib/Dialect/GPU/Transforms/*.cpp",
+             "lib/Dialect/GPU/Transforms/*.h",
+         ],
++        allow_empty = True,
+         exclude = [
+             "lib/Dialect/GPU/Transforms/SerializeToCubin.cpp",
+         ],
+@@ -5624,10 +5708,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "GPUToNVVMTransforms",
+-    srcs = glob([
+-        "lib/Conversion/GPUToNVVM/*.cpp",
+-        "lib/Conversion/GPUToNVVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/GPUToNVVM/*.cpp",
++            "lib/Conversion/GPUToNVVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/GPUToNVVM/*.h",
+     ]),
+@@ -5660,10 +5747,13 @@ cc_library(
+ 
+ cc_library(
+     name = "AMDGPUToROCDL",
+-    srcs = glob([
+-        "lib/Conversion/AMDGPUToROCDL/*.cpp",
+-        "lib/Conversion/AMDGPUToROCDL/*.h",
+-    ]) + ["include/mlir/Conversion/GPUToROCDL/Runtimes.h"],
++    srcs = glob(
++        [
++            "lib/Conversion/AMDGPUToROCDL/*.cpp",
++            "lib/Conversion/AMDGPUToROCDL/*.h",
++        ],
++        allow_empty = True,
++    ) + ["include/mlir/Conversion/GPUToROCDL/Runtimes.h"],
+     hdrs = glob([
+         "include/mlir/Conversion/AMDGPUToROCDL/*.h",
+     ]),
+@@ -5685,10 +5775,13 @@ cc_library(
+ 
+ cc_library(
+     name = "NVGPUToNVVM",
+-    srcs = glob([
+-        "lib/Conversion/NVGPUToNVVM/*.cpp",
+-        "lib/Conversion/NVGPUToNVVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/NVGPUToNVVM/*.cpp",
++            "lib/Conversion/NVGPUToNVVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/NVGPUToNVVM/*.h",
+     ]),
+@@ -5713,10 +5806,13 @@ cc_library(
+ 
+ cc_library(
+     name = "VectorToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/VectorToSPIRV/*.cpp",
+-        "lib/Conversion/VectorToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/VectorToSPIRV/*.cpp",
++            "lib/Conversion/VectorToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/VectorToSPIRV/*.h",
+     ]),
+@@ -5842,10 +5938,13 @@ cc_library(
+ 
+ cc_library(
+     name = "GPUToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/GPUToSPIRV/*.cpp",
+-        "lib/Conversion/GPUToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/GPUToSPIRV/*.cpp",
++            "lib/Conversion/GPUToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/GPUToSPIRV/*.h",
+     ]),
+@@ -6410,10 +6509,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "PDLDialect",
+-    srcs = glob([
+-        "lib/Dialect/PDL/IR/*.cpp",
+-        "lib/Dialect/PDL/IR/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/PDL/IR/*.cpp",
++            "lib/Dialect/PDL/IR/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/PDL/IR/*.h",
+     ]),
+@@ -6485,10 +6587,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "PDLInterpDialect",
+-    srcs = glob([
+-        "lib/Dialect/PDLInterp/IR/*.cpp",
+-        "lib/Dialect/PDLInterp/IR/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/PDLInterp/IR/*.cpp",
++            "lib/Dialect/PDLInterp/IR/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/PDLInterp/IR/*.h",
+     ]),
+@@ -6785,6 +6890,7 @@ cc_library(
+             "lib/Dialect/SPIRV/Transforms/*.cpp",
+             "lib/Dialect/SPIRV/Transforms/*.h",
+         ],
++        allow_empty = True,
+         exclude = ["lib/Dialect/SPIRV/Transforms/SPIRVConversion.cpp"],
+     ),
+     hdrs = glob(
+@@ -6820,10 +6926,13 @@ cc_library(
+ 
+ cc_library(
+     name = "MathToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/MathToSPIRV/*.cpp",
+-        "lib/Conversion/MathToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/MathToSPIRV/*.cpp",
++            "lib/Conversion/MathToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/MathToSPIRV/*.h",
+     ]),
+@@ -6847,10 +6956,13 @@ cc_library(
+ 
+ cc_library(
+     name = "FuncToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/FuncToSPIRV/*.cpp",
+-        "lib/Conversion/FuncToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/FuncToSPIRV/*.cpp",
++            "lib/Conversion/FuncToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/FuncToSPIRV/*.h",
+     ]),
+@@ -6879,10 +6991,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TensorToLinalg",
+-    srcs = glob([
+-        "lib/Conversion/TensorToLinalg/*.cpp",
+-        "lib/Conversion/TensorToLinalg/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/TensorToLinalg/*.cpp",
++            "lib/Conversion/TensorToLinalg/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/TensorToLinalg/*.h",
+     ]),
+@@ -6908,10 +7023,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TensorToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/TensorToSPIRV/*.cpp",
+-        "lib/Conversion/TensorToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/TensorToSPIRV/*.cpp",
++            "lib/Conversion/TensorToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/TensorToSPIRV/*.h",
+     ]),
+@@ -7195,6 +7313,7 @@ cc_library(
+             "lib/Dialect/Tensor/Transforms/*.cpp",
+             "lib/Dialect/Tensor/Transforms/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(["include/mlir/Dialect/Tensor/Transforms/*.h"]),
+     includes = ["include"],
+@@ -7295,10 +7414,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TransformUtils",
+-    srcs = glob([
+-        "lib/Transforms/Utils/*.cpp",
+-        "lib/Transforms/Utils/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Transforms/Utils/*.cpp",
++            "lib/Transforms/Utils/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(
+         [
+             "include/mlir/Transforms/*.h",
+@@ -7627,10 +7749,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "Transforms",
+-    srcs = glob([
+-        "lib/Transforms/*.cpp",
+-        "lib/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Transforms/*.cpp",
++            "lib/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Transforms/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -7712,10 +7837,13 @@ cc_library(
+ 
+ cc_library(
+     name = "SCFToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/SCFToSPIRV/*.cpp",
+-        "lib/Conversion/SCFToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/SCFToSPIRV/*.cpp",
++            "lib/Conversion/SCFToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/SCFToSPIRV/*.h",
+     ]),
+@@ -7985,10 +8113,13 @@ cc_library(
+ 
+ cc_library(
+     name = "MemRefToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/MemRefToSPIRV/*.cpp",
+-        "lib/Conversion/MemRefToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/MemRefToSPIRV/*.cpp",
++            "lib/Conversion/MemRefToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/MemRefToSPIRV/*.h",
+     ]),
+@@ -8044,17 +8175,20 @@ cc_library(
+ 
+ cc_library(
+     name = "ArithToArmSME",
+-    srcs = glob([
+-        "lib/Conversion/ArithToArmSME/*.cpp",
+-        "lib/Conversion/ArithToArmSME/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/ArithToArmSME/*.cpp",
++            "lib/Conversion/ArithToArmSME/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/ArithToArmSME/*.h",
+     ]),
+     includes = ["include"],
+     deps = [
+-        ":ArmSMEDialect",
+         ":ArithDialect",
++        ":ArmSMEDialect",
+         ":ConversionPassIncGen",
+         ":IR",
+         ":Pass",
+@@ -8336,6 +8470,7 @@ cc_library(
+             "lib/Analysis/*/*.cpp",
+             "lib/Analysis/*/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(
+         [
+@@ -9728,6 +9863,7 @@ cc_library(
+             "lib/Dialect/OpenACC/IR/*.cpp",
+             "lib/Dialect/OpenACC/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(
+         [
+@@ -9910,6 +10046,7 @@ cc_library(
+             "lib/Dialect/OpenMP/IR/*.cpp",
+             "lib/Dialect/OpenMP/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(
+         [
+@@ -9941,10 +10078,13 @@ cc_library(
+ 
+ cc_library(
+     name = "OpenACCToSCF",
+-    srcs = glob([
+-        "lib/Conversion/OpenACCToSCF/*.cpp",
+-        "lib/Conversion/OpenACCToSCF/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/OpenACCToSCF/*.cpp",
++            "lib/Conversion/OpenACCToSCF/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/OpenACCToSCF/*.h",
+     ]),
+@@ -9965,13 +10105,19 @@ cc_library(
+ 
+ cc_library(
+     name = "OpenACCToLLVM",
+-    srcs = glob([
+-        "lib/Conversion/OpenACCToLLVM/*.cpp",
+-        "lib/Conversion/OpenACCToLLVM/*.h",
+-    ]),
+-    hdrs = glob([
+-        "include/mlir/Conversion/OpenACCToLLVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/OpenACCToLLVM/*.cpp",
++            "lib/Conversion/OpenACCToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
++    hdrs = glob(
++        [
++            "include/mlir/Conversion/OpenACCToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     includes = ["include"],
+     deps = [
+         ":ConversionPassIncGen",
+@@ -9989,10 +10135,13 @@ cc_library(
+ 
+ cc_library(
+     name = "OpenMPToLLVM",
+-    srcs = glob([
+-        "lib/Conversion/OpenMPToLLVM/*.cpp",
+-        "lib/Conversion/OpenMPToLLVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/OpenMPToLLVM/*.cpp",
++            "lib/Conversion/OpenMPToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/OpenMPToLLVM/*.h",
+     ]),
+@@ -10199,10 +10348,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "IndexToLLVM",
+-    srcs = glob([
+-        "lib/Conversion/IndexToLLVM/*.cpp",
+-        "lib/Conversion/IndexToLLVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/IndexToLLVM/*.cpp",
++            "lib/Conversion/IndexToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/IndexToLLVM/*.h",
+     ]),
+@@ -10225,10 +10377,13 @@ cc_library(
+ 
+ cc_library(
+     name = "IndexToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/IndexToSPIRV/*.cpp",
+-        "lib/Conversion/IndexToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/IndexToSPIRV/*.cpp",
++            "lib/Conversion/IndexToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/IndexToSPIRV/*.h",
+     ]),
+@@ -10616,10 +10771,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "LinalgToStandard",
+-    srcs = glob([
+-        "lib/Conversion/LinalgToStandard/*.cpp",
+-        "lib/Conversion/LinalgToStandard/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/LinalgToStandard/*.cpp",
++            "lib/Conversion/LinalgToStandard/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/LinalgToStandard/*.h",
+     ]),
+@@ -10757,10 +10915,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "LinalgUtils",
+-    srcs = glob([
+-        "lib/Dialect/Linalg/Utils/*.cpp",
+-        "lib/Dialect/Linalg/Utils/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Linalg/Utils/*.cpp",
++            "lib/Dialect/Linalg/Utils/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/Linalg/Utils/*.h",
+     ]),
+@@ -10786,10 +10947,13 @@ cc_library(
+ 
+ cc_library(
+     name = "LinalgTransforms",
+-    srcs = glob([
+-        "lib/Dialect/Linalg/Transforms/*.cpp",
+-        "lib/Dialect/Linalg/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Linalg/Transforms/*.cpp",
++            "lib/Dialect/Linalg/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = [
+         "include/mlir/Dialect/Linalg/Passes.h",
+     ] + glob([
+@@ -11134,10 +11298,13 @@ cc_library(
+ 
+ cc_library(
+     name = "VectorToLLVM",
+-    srcs = glob([
+-        "lib/Conversion/VectorToLLVM/*.cpp",
+-        "lib/Conversion/VectorToLLVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/VectorToLLVM/*.cpp",
++            "lib/Conversion/VectorToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/VectorToLLVM/*.h",
+     ]),
+@@ -11176,10 +11343,13 @@ cc_library(
+ 
+ cc_library(
+     name = "VectorToArmSME",
+-    srcs = glob([
+-        "lib/Conversion/VectorToArmSME/*.cpp",
+-        "lib/Conversion/VectorToArmSME/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/VectorToArmSME/*.cpp",
++            "lib/Conversion/VectorToArmSME/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/VectorToArmSME/*.h",
+     ]),
+@@ -11197,10 +11367,13 @@ cc_library(
+ 
+ cc_library(
+     name = "VectorToGPU",
+-    srcs = glob([
+-        "lib/Conversion/VectorToGPU/*.cpp",
+-        "lib/Conversion/VectorToGPU/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/VectorToGPU/*.cpp",
++            "lib/Conversion/VectorToGPU/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/VectorToGPU/*.h",
+     ]),
+@@ -11234,10 +11407,13 @@ cc_library(
+ 
+ cc_library(
+     name = "VectorToSCF",
+-    srcs = glob([
+-        "lib/Conversion/VectorToSCF/*.cpp",
+-        "lib/Conversion/VectorToSCF/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/VectorToSCF/*.cpp",
++            "lib/Conversion/VectorToSCF/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/VectorToSCF/*.h",
+     ]),
+@@ -11384,12 +11560,15 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "TosaDialect",
+-    srcs = glob([
+-        "lib/Dialect/Tosa/IR/*.cpp",
+-        "lib/Dialect/Tosa/IR/*.h",
+-        "lib/Dialect/Tosa/Utils/*.cpp",
+-        "lib/Dialect/Tosa/Transforms/*.cpp",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Tosa/IR/*.cpp",
++            "lib/Dialect/Tosa/IR/*.h",
++            "lib/Dialect/Tosa/Utils/*.cpp",
++            "lib/Dialect/Tosa/Transforms/*.cpp",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/Tosa/IR/*.h",
+         "include/mlir/Dialect/Tosa/Utils/*.h",
+@@ -11423,10 +11602,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TosaToArith",
+-    srcs = glob([
+-        "lib/Conversion/TosaToArith/*.cpp",
+-        "lib/Conversion/TosaToArith/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/TosaToArith/*.cpp",
++            "lib/Conversion/TosaToArith/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/TosaToArith/*.h",
+     ]),
+@@ -11447,10 +11629,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TosaToLinalg",
+-    srcs = glob([
+-        "lib/Conversion/TosaToLinalg/*.cpp",
+-        "lib/Conversion/TosaToLinalg/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/TosaToLinalg/*.cpp",
++            "lib/Conversion/TosaToLinalg/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/TosaToLinalg/*.h",
+     ]),
+@@ -11480,10 +11665,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TosaToMLProgram",
+-    srcs = glob([
+-        "lib/Conversion/TosaToMLProgram/*.cpp",
+-        "lib/Conversion/TosaToMLProgram/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/TosaToMLProgram/*.cpp",
++            "lib/Conversion/TosaToMLProgram/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/TosaToMLProgram/*.h",
+     ]),
+@@ -11504,10 +11692,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TosaToSCF",
+-    srcs = glob([
+-        "lib/Conversion/TosaToSCF/*.cpp",
+-        "lib/Conversion/TosaToSCF/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/TosaToSCF/*.cpp",
++            "lib/Conversion/TosaToSCF/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/TosaToSCF/*.h",
+     ]),
+@@ -11529,10 +11720,13 @@ cc_library(
+ 
+ cc_library(
+     name = "TosaToTensor",
+-    srcs = glob([
+-        "lib/Conversion/TosaToTensor/*.cpp",
+-        "lib/Conversion/TosaToTensor/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/TosaToTensor/*.cpp",
++            "lib/Conversion/TosaToTensor/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/TosaToTensor/*.h",
+     ]),
+@@ -12007,6 +12201,7 @@ cc_library(
+             "lib/Dialect/Complex/IR/*.cpp",
+             "lib/Dialect/Complex/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = ["include/mlir/Dialect/Complex/IR/Complex.h"],
+     includes = ["include"],
+@@ -12025,10 +12220,13 @@ cc_library(
+ 
+ cc_library(
+     name = "ComplexToLLVM",
+-    srcs = glob([
+-        "lib/Conversion/ComplexToLLVM/*.cpp",
+-        "lib/Conversion/ComplexToLLVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/ComplexToLLVM/*.cpp",
++            "lib/Conversion/ComplexToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/ComplexToLLVM/*.h",
+     ]),
+@@ -12053,10 +12251,13 @@ cc_library(
+ 
+ cc_library(
+     name = "ComplexToLibm",
+-    srcs = glob([
+-        "lib/Conversion/ComplexToLibm/*.cpp",
+-        "lib/Conversion/ComplexToLibm/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/ComplexToLibm/*.cpp",
++            "lib/Conversion/ComplexToLibm/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/ComplexToLibm/*.h",
+     ]),
+@@ -12077,10 +12278,13 @@ cc_library(
+ 
+ cc_library(
+     name = "ComplexToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/ComplexToSPIRV/*.cpp",
+-        "lib/Conversion/ComplexToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/ComplexToSPIRV/*.cpp",
++            "lib/Conversion/ComplexToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/ComplexToSPIRV/*.h",
+     ]),
+@@ -12102,10 +12306,13 @@ cc_library(
+ 
+ cc_library(
+     name = "ComplexToStandard",
+-    srcs = glob([
+-        "lib/Conversion/ComplexToStandard/*.cpp",
+-        "lib/Conversion/ComplexToStandard/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/ComplexToStandard/*.cpp",
++            "lib/Conversion/ComplexToStandard/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/ComplexToStandard/*.h",
+     ]),
+@@ -12309,10 +12516,13 @@ gentbl_cc_library(
+ 
+ cc_library(
+     name = "ArithTransforms",
+-    srcs = glob([
+-        "lib/Dialect/Arith/Transforms/*.cpp",
+-        "lib/Dialect/Arith/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Arith/Transforms/*.cpp",
++            "lib/Dialect/Arith/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Dialect/Arith/Transforms/*.h",
+     ]),
+@@ -12434,6 +12644,7 @@ cc_library(
+             "lib/Dialect/Math/IR/*.cpp",
+             "lib/Dialect/Math/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = [
+         "include/mlir/Dialect/Math/IR/Math.h",
+@@ -12456,10 +12667,13 @@ cc_library(
+ 
+ cc_library(
+     name = "MathTransforms",
+-    srcs = glob([
+-        "lib/Dialect/Math/Transforms/*.cpp",
+-        "lib/Dialect/Math/Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/Math/Transforms/*.cpp",
++            "lib/Dialect/Math/Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob(["include/mlir/Dialect/Math/Transforms/*.h"]),
+     includes = ["include"],
+     deps = [
+@@ -12480,10 +12694,13 @@ cc_library(
+ 
+ cc_library(
+     name = "MathToLibm",
+-    srcs = glob([
+-        "lib/Conversion/MathToLibm/*.cpp",
+-        "lib/Conversion/MathToLibm/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/MathToLibm/*.cpp",
++            "lib/Conversion/MathToLibm/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/MathToLibm/*.h",
+     ]),
+@@ -12575,6 +12792,7 @@ cc_library(
+             "lib/Dialect/MemRef/IR/*.cpp",
+             "lib/Dialect/MemRef/IR/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = [
+         "include/mlir/Dialect/MemRef/IR/MemRef.h",
+@@ -12647,6 +12865,7 @@ cc_library(
+             "lib/Dialect/MemRef/Transforms/*.cpp",
+             "lib/Dialect/MemRef/Transforms/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(["include/mlir/Dialect/MemRef/Transforms/*.h"]),
+     includes = ["include"],
+@@ -13126,6 +13345,7 @@ cc_library(
+             "lib/Dialect/Bufferization/Transforms/*.cpp",
+             "lib/Dialect/Bufferization/Transforms/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(["include/mlir/Dialect/Bufferization/Transforms/*.h"]),
+     includes = ["include"],
+@@ -13316,6 +13536,7 @@ cc_library(
+             "lib/Tools/PDLL/ODS/*.cpp",
+             "lib/Tools/PDLL/ODS/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(["include/mlir/Tools/PDLL/ODS/*.h"]),
+     includes = ["include"],
+@@ -13350,6 +13571,7 @@ cc_library(
+             "lib/Tools/PDLL/CodeGen/*.cpp",
+             "lib/Tools/PDLL/CodeGen/*.h",
+         ],
++        allow_empty = True,
+     ),
+     hdrs = glob(["include/mlir/Tools/PDLL/CodeGen/*.h"]),
+     includes = ["include"],
+@@ -13507,10 +13729,13 @@ cc_library(
+ 
+ cc_library(
+     name = "UBToLLVM",
+-    srcs = glob([
+-        "lib/Conversion/UBToLLVM/*.cpp",
+-        "lib/Conversion/UBToLLVM/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/UBToLLVM/*.cpp",
++            "lib/Conversion/UBToLLVM/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/UBToLLVM/*.h",
+     ]),
+@@ -13528,10 +13753,13 @@ cc_library(
+ 
+ cc_library(
+     name = "UBToSPIRV",
+-    srcs = glob([
+-        "lib/Conversion/UBToSPIRV/*.cpp",
+-        "lib/Conversion/UBToSPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Conversion/UBToSPIRV/*.cpp",
++            "lib/Conversion/UBToSPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     hdrs = glob([
+         "include/mlir/Conversion/UBToSPIRV/*.h",
+     ]),
+diff --git a/mlir/test/BUILD.bazel b/mlir/test/BUILD.bazel
+--- a/mlir/test/BUILD.bazel
++++ b/mlir/test/BUILD.bazel
+@@ -810,7 +810,10 @@ cc_library(
+ cc_library(
+     name = "TestMesh",
+     srcs = glob(["lib/Dialect/Mesh/**/*.cpp"]),
+-    hdrs = glob(["lib/Dialect/Mesh/**/*.h"]),
++    hdrs = glob(
++        ["lib/Dialect/Mesh/**/*.h"],
++        allow_empty = True,
++    ),
+     includes = ["lib/Dialect/Test"],
+     deps = [
+         ":TestDialect",
+@@ -1013,9 +1016,12 @@ cc_library(
+ 
+ cc_library(
+     name = "TestTypeDialect",
+-    srcs = glob([
+-        "lib/Dialect/LLVMIR/*.cpp",
+-    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/LLVMIR/*.cpp",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         ":TestDialect",
+         "//mlir:IR",
+diff --git a/mlir/unittests/BUILD.bazel b/mlir/unittests/BUILD.bazel
+--- a/mlir/unittests/BUILD.bazel
++++ b/mlir/unittests/BUILD.bazel
+@@ -14,10 +14,13 @@ licenses(["notice"])
+ cc_test(
+     name = "debug_tests",
+     size = "small",
+-    srcs = glob([
+-        "Debug/*.cpp",
+-        "Debug/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Debug/*.cpp",
++            "Debug/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -33,10 +36,13 @@ cc_test(
+ cc_test(
+     name = "ir_tests",
+     size = "small",
+-    srcs = glob([
+-        "IR/*.cpp",
+-        "IR/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "IR/*.cpp",
++            "IR/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//mlir:FunctionInterfaces",
+@@ -53,10 +59,13 @@ cc_test(
+ cc_test(
+     name = "interface_tests",
+     size = "small",
+-    srcs = glob([
+-        "Interfaces/*.cpp",
+-        "Interfaces/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Interfaces/*.cpp",
++            "Interfaces/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -77,10 +86,13 @@ cc_test(
+ cc_test(
+     name = "support_tests",
+     size = "small",
+-    srcs = glob([
+-        "Support/*.cpp",
+-        "Support/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Support/*.cpp",
++            "Support/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -93,10 +105,13 @@ cc_test(
+ cc_test(
+     name = "pass_tests",
+     size = "small",
+-    srcs = glob([
+-        "Pass/*.cpp",
+-        "Pass/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Pass/*.cpp",
++            "Pass/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -113,10 +128,13 @@ cc_test(
+ cc_test(
+     name = "rewrite_tests",
+     size = "small",
+-    srcs = glob([
+-        "Rewrite/*.cpp",
+-        "Rewrite/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Rewrite/*.cpp",
++            "Rewrite/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//mlir:IR",
+         "//mlir:Rewrite",
+@@ -128,10 +146,13 @@ cc_test(
+ cc_test(
+     name = "dialect_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/*.cpp",
+-        "Dialect/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/*.cpp",
++            "Dialect/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//mlir:Dialect",
+@@ -143,10 +164,13 @@ cc_test(
+ cc_test(
+     name = "memref_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/MemRef/*.cpp",
+-        "Dialect/MemRef/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/MemRef/*.cpp",
++            "Dialect/MemRef/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:TestingSupport",
+         "//mlir:IR",
+@@ -159,10 +183,13 @@ cc_test(
+ cc_test(
+     name = "quantops_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/Quant/*.cpp",
+-        "Dialect/Quant/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/Quant/*.cpp",
++            "Dialect/Quant/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:TestingSupport",
+         "//mlir:QuantOps",
+@@ -174,10 +201,13 @@ cc_test(
+ cc_test(
+     name = "scf_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/SCF/*.cpp",
+-        "Dialect/SCF/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/SCF/*.cpp",
++            "Dialect/SCF/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//mlir:ArithDialect",
+         "//mlir:FuncDialect",
+@@ -192,10 +222,13 @@ cc_test(
+ cc_test(
+     name = "sparse_tensor_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/SparseTensor/*.cpp",
+-        "Dialect/SparseTensor/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/SparseTensor/*.cpp",
++            "Dialect/SparseTensor/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -209,10 +242,13 @@ cc_test(
+ cc_test(
+     name = "spirv_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/SPIRV/*.cpp",
+-        "Dialect/SPIRV/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/SPIRV/*.cpp",
++            "Dialect/SPIRV/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -229,10 +265,13 @@ cc_test(
+ cc_test(
+     name = "transform_dialect_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/Transform/*.cpp",
+-        "Dialect/Transform/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/Transform/*.cpp",
++            "Dialect/Transform/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -254,10 +293,13 @@ cc_test(
+ cc_test(
+     name = "dialect_utils_tests",
+     size = "small",
+-    srcs = glob([
+-        "Dialect/Utils/*.cpp",
+-        "Dialect/Utils/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Dialect/Utils/*.cpp",
++            "Dialect/Utils/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//llvm:TestingSupport",
+@@ -307,10 +349,13 @@ gentbl_cc_library(
+ cc_test(
+     name = "tablegen_tests",
+     size = "small",
+-    srcs = glob([
+-        "TableGen/*.cpp",
+-        "TableGen/*.h",
+-    ]) + [
++    srcs = glob(
++        [
++            "TableGen/*.cpp",
++            "TableGen/*.h",
++        ],
++        allow_empty = True,
++    ) + [
+         "TableGen/EnumsGenTest.cpp.inc",
+         "TableGen/EnumsGenTest.h.inc",
+     ],
+@@ -333,10 +378,13 @@ cc_test(
+ cc_test(
+     name = "transforms_test",
+     size = "small",
+-    srcs = glob([
+-        "Transforms/*.cpp",
+-        "Transforms/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Transforms/*.cpp",
++            "Transforms/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//mlir:AffineAnalysis",
+         "//mlir:IR",
+@@ -352,12 +400,15 @@ cc_test(
+ cc_test(
+     name = "analysis_tests",
+     size = "small",
+-    srcs = glob([
+-        "Analysis/*.cpp",
+-        "Analysis/*.h",
+-        "Analysis/*/*.cpp",
+-        "Analysis/*/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Analysis/*.cpp",
++            "Analysis/*.h",
++            "Analysis/*/*.cpp",
++            "Analysis/*/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:TestingSupport",
+         "//mlir:AffineAnalysis",
+@@ -375,12 +426,15 @@ cc_test(
+ cc_test(
+     name = "bytecode_tests",
+     size = "small",
+-    srcs = glob([
+-        "Bytecode/*.cpp",
+-        "Bytecode/*.h",
+-        "Bytecode/*/*.cpp",
+-        "Bytecode/*/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Bytecode/*.cpp",
++            "Bytecode/*.h",
++            "Bytecode/*/*.cpp",
++            "Bytecode/*/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//llvm:Support",
+         "//mlir:BytecodeReader",
+@@ -396,12 +450,15 @@ cc_test(
+ cc_test(
+     name = "conversion_tests",
+     size = "small",
+-    srcs = glob([
+-        "Conversion/*.cpp",
+-        "Conversion/*.h",
+-        "Conversion/*/*.cpp",
+-        "Conversion/*/*.h",
+-    ]),
++    srcs = glob(
++        [
++            "Conversion/*.cpp",
++            "Conversion/*.h",
++            "Conversion/*/*.cpp",
++            "Conversion/*/*.h",
++        ],
++        allow_empty = True,
++    ),
+     deps = [
+         "//mlir:ArithDialect",
+         "//mlir:IR",
