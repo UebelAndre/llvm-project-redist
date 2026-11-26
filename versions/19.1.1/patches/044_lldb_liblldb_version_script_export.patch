@@ -1,0 +1,22 @@
+# No upstream commit yet (proposed as a PR from the lldb-bazel-version-script
+# branch): the Linux linkopt for liblldb passes the generated exports file,
+# which `gen_exports_file_linux` already writes in version-script syntax
+# (`{ global: ...; };`), as `--export-dynamic-symbol-list`. That option exists
+# in lld and in GNU ld 2.35+, but never in gold, which Bazel's autoconfigured
+# GCC toolchain selects on the bazelci Linux images, so liblldb dies with
+# "ld.gold: --export-dynamic-symbol-list=...: unknown option". CMake passes
+# the same file as `--version-script` (llvm/cmake/modules/AddLLVM.cmake,
+# add_llvm_symbol_exports), which lld, ld.bfd and gold all accept, and with no
+# `local:` clause it exports the same symbols.
+diff --git a/lldb/BUILD.bazel b/lldb/BUILD.bazel
+--- a/lldb/BUILD.bazel
++++ b/lldb/BUILD.bazel
+@@ -744,7 +744,7 @@
+     }),
+     linkopts = select({
+         "@platforms//os:linux": [
+-            "-Wl,--export-dynamic-symbol-list=$(location :gen_exports_file_linux)",
++            "-Wl,--version-script=$(location :gen_exports_file_linux)",
+         ],
+         "@platforms//os:macos": [
+             "-Wl,-exported_symbols_list,$(location :gen_exports_file_macos)",
